@@ -1,0 +1,29 @@
+# Local infra — run `docker compose up -d` once Docker Desktop is installed.
+# Until then, Neon (Postgres) + Upstash (Redis) URLs in apps/api/.env work identically.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: hillexpress
+      POSTGRES_PASSWORD: hillexpress
+      POSTGRES_DB: hillexpress
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hillexpress"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+
+volumes:
+  pgdata:
+  redisdata:

@@ -1,0 +1,764 @@
+// ═══════════════════════════════════════════════════════════════════════
+// Hill Express — database schema v1
+//
+// Conventions (non-negotiable):
+//  • PKs are UUIDv7 — time-sortable, non-guessable, client-generatable.
+//  • Money is ALWAYS integer paise. A rounding bug in COD is a cash shortfall.
+//  • storeId on every catalogue/order row from day one: launch with one
+//    store, schema already multi-store. No migration later.
+//  • Ledgers (stock, COD, status history) are append-only. State is always
+//    recomputable and auditable; reports read ledgers, never lock hot tables.
+//  • Order snapshots: order_items denormalize name/price/unit as of order
+//    time. Historical orders are NEVER joined to products for display.
+//  • Soft deletes (deletedAt) on catalogue — deleted products still appear
+//    in past orders.
+//  • No driver location history table in v1 — only last-known position on
+//    the driver row. (Highest-write table by 100×; add partitioned later IF needed.)
+// ═══════════════════════════════════════════════════════════════════════
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL") // pooled (PgBouncer) — runtime queries
+  directUrl = env("DIRECT_URL") // direct — migrations need session mode
+}
+
+// ─────────────────────────── ENUMS ───────────────────────────
+
+enum UserStatus {
+  ACTIVE
+  BLOCKED
+}
+
+enum Unit {
+  KG
+  G
+  LITRE
+  ML
+  PIECE
+  PACK
+}
+
+enum StockReason {
+  IMPORT
+  MANUAL
+  ORDER_RESERVE
+  ORDER_RELEASE
+  ORDER_SELL
+  ADJUST
+}
+
+enum FulfillmentStatus {
+  PLACED
+  ACCEPTED
+  PACKING
+  READY_FOR_PICKUP
+  PICKED_UP
+  OUT_FOR_DELIVERY
+  DELIVERED
+  REJECTED
+  CANCELLED
+}
+
+enum AssignmentStatus {
+  UNASSIGNED
+  ASSIGNED
+  ACCEPTED_BY_DRIVER
+  REASSIGNED
+}
+
+// COD-only at launch; the rest exist so adding a gateway is additive, not a migration.
+enum PaymentMethod {
+  COD
+  UPI
+  CARD
+  NETBANKING
+  WALLET
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+enum ActorType {
+  CUSTOMER
+  STORE
+  DRIVER
+  ADMIN
+  SYSTEM
+}
+
+enum CodEntryType {
+  COLLECTED // driver ← customer
+  DEPOSITED // driver → office, admin-confirmed
+  WAIVED
+  SHORTFALL
+  ADJUSTMENT
+}
+
+enum DriverStatus {
+  OFFLINE
+  AVAILABLE
+  ON_DELIVERY
+  SUSPENDED
+}
+
+enum AdminRole {
+  SUPER
+  OPS
+  FINANCE
+}
+
+enum OtpPurpose {
+  LOGIN
+  PICKUP
+  DELIVERY
+}
+
+enum RefundType {
+  ADJUSTMENT // COD-only world: money never moved, so no refund-to-source
+  CREDIT_NOTE
+  SOURCE // used once a gateway exists
+}
+
+enum RefundStatus {
+  PENDING
+  APPROVED
+  COMPLETED
+  REJECTED
+}
+
+enum OutboxStatus {
+  PENDING
+  PROCESSING
+  SENT
+  FAILED
+  DEAD
+}
+
+enum ImportStatus {
+  PENDING
+  PROCESSING
+  DONE
+  FAILED
+}
+
+enum DevicePlatform {
+  ANDROID
+  WEB
+}
+
+enum DeviceOwnerType {
+  CUSTOMER
+  DRIVER
+  POS
+  ADMIN
+}
+
+/** What tapping a promo banner opens. */
+enum BannerLinkType {
+  NONE
+  CATEGORY
+  PRODUCT
+  SEARCH
+}
+
+// ─────────────────────────── IDENTITY ───────────────────────────
+
+model User {
+  id     String     @id @default(uuid(7))
+  phone  String     @unique // E.164: +919876543210
+  name   String?
+  email  String?
+  status UserStatus @default(ACTIVE) // FR-C-002
+
+  // COD risk controls — with no prepayment, these are load-bearing.
+  codBlocked       Boolean @default(false)
+  failedCodCount   Int     @default(0)
+  maxOpenCodOrders Int     @default(1)
+  maxCodOrderPaise Int     @default(50000) // ₹500 first-timer cap, raised after N deliveries
+  completedOrders  Int     @default(0)
+
+  defaultAddressId String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  addresses Address[]
+  orders    Order[]
+  carts     Cart[]
+  ratings   Rating[]
+
+  @@index([status, createdAt(sort: Desc)])
+}
+
+model Address {
+  id           String    @id @default(uuid(7))
+  userId       String
+  label        String // Home / Work (FR-C-003: max 2, enforced in service)
+  house        String
+  street       String
+  landmark     String?
+  city         String
+  pincode      String
+  lat          Float
+  lng          Float
+  elevationM   Float? // hill ETA: up/downhill legs are not symmetric
+  instructions String?
+  zoneId       String? // resolved at save (FR-C-004)
+  deletedAt    DateTime?
+  createdAt    DateTime  @default(now())
+
+  user   User          @relation(fields: [userId], references: [id])
+  zone   DeliveryZone? @relation(fields: [zoneId], references: [id])
+  orders Order[]
+
+  @@index([userId, deletedAt])
+  @@index([pincode])
+}
+
+model OtpToken {
+  id         String     @id @default(uuid(7))
+  phone      String
+  otpHash    String // hashed, never plaintext
+  purpose    OtpPurpose
+  attempts   Int        @default(0)
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime   @default(now())
+
+  @@index([phone, purpose, createdAt(sort: Desc)])
+}
+
+model AdminUser {
+  id           String    @id @default(uuid(7))
+  email        String    @unique
+  name         String
+  passwordHash String
+  role         AdminRole @default(OPS)
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+// ─────────────────────── GEO & SERVICEABILITY ───────────────────────
+
+model DeliveryZone {
+  id        String   @id @default(uuid(7))
+  name      String
+  pincodes  String[] // fast path for serviceability checks
+  centerLat Float? // radius fallback
+  centerLng Float?
+  radiusKm  Float?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  config    DeliveryConfig?
+  stores    Store[]
+  addresses Address[]
+
+  @@index([isActive])
+}
+
+// ETA constants — ops-tunable per zone/store, NEVER hardcoded. Monsoon
+// retuning must not require a Play Store release.
+model DeliveryConfig {
+  id               String   @id @default(uuid(7))
+  zoneId           String?  @unique // null = global default
+  storeId          String?  @unique // store override wins over zone
+  roadFactor       Float    @default(1.7) // hill switchbacks
+  avgSpeedKmph     Float    @default(16)
+  avgSpeedUphill   Float    @default(13)
+  avgSpeedDownhill Float    @default(19)
+  pickupDwellMin   Int      @default(3)
+  dropDwellMin     Int      @default(5)
+  safetyBufferMin  Int      @default(7)
+  etaRangeLowPct   Float    @default(0.85)
+  etaRangeHighPct  Float    @default(1.20)
+  updatedAt        DateTime @updatedAt
+
+  zone  DeliveryZone? @relation(fields: [zoneId], references: [id])
+  store Store?        @relation(fields: [storeId], references: [id])
+}
+
+// ─────────────────────── STORES & CATALOGUE ───────────────────────
+
+model Store {
+  id               String   @id @default(uuid(7))
+  name             String
+  code             String   @unique // HE-STORE-001
+  phone            String
+  addressLine      String
+  lat              Float
+  lng              Float
+  elevationM       Float?
+  zoneId           String
+  isOpen           Boolean  @default(false) // operator toggle
+  isBlocked        Boolean  @default(false) // admin kill-switch
+  deliveryFeePaise Int      @default(0)
+  freeDeliveryAbovePaise Int?
+  openTime         String // "08:00"
+  closeTime        String // "22:00"
+  defaultPrepMin   Int      @default(15)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  zone       DeliveryZone    @relation(fields: [zoneId], references: [id])
+  config     DeliveryConfig?
+  categories Category[]
+  products   Product[]
+  orders     Order[]
+  banners    Banner[]
+
+  @@index([zoneId, isOpen, isBlocked])
+}
+
+model Category {
+  id        String    @id @default(uuid(7))
+  storeId   String
+  name      String
+  sortOrder Int       @default(0)
+  imageUrl  String?
+  deletedAt DateTime?
+
+  store    Store     @relation(fields: [storeId], references: [id])
+  products Product[]
+
+  @@index([storeId, deletedAt, sortOrder])
+}
+
+model Product {
+  id            String    @id @default(uuid(7))
+  storeId       String
+  sku           String? // §7.4 re-import match key
+  name          String
+  description   String?
+  categoryId    String
+  unit          Unit
+  packSize      String // "500 g", "6-pack"
+  pricePaise    Int
+  mrpPaise      Int? // strike-through price
+  discountPaise Int       @default(0)
+  taxBps        Int       @default(0) // basis points — integer, like all money math
+  stockQty      Int       @default(0)
+  reservedQty   Int       @default(0) // checkout reserves; pickup commits
+  lowStockAt    Int       @default(5) // FR-P-007 low-stock alert threshold
+  isAvailable   Boolean   @default(true)
+  imageUrl      String?
+  blurhash      String? // ~30 bytes; images fade from blur, never pop in
+  // FR-C-007 full-text search. GENERATED column + GIN index live in the
+  // 1_product_search raw migration — Prisma can't express either natively.
+  searchVector  Unsupported("tsvector")?
+  deletedAt     DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  store      Store       @relation(fields: [storeId], references: [id])
+  category   Category    @relation(fields: [categoryId], references: [id])
+  cartItems  CartItem[]
+  orderItems OrderItem[]
+
+  @@unique([storeId, sku]) // makes bulk re-import an upsert
+  @@index([storeId, categoryId, isAvailable, deletedAt])
+  @@index([storeId, name])
+}
+
+// Append-only. Stock is always provable: current = SUM(delta) per product.
+model StockLedger {
+  id          String      @id @default(uuid(7))
+  productId   String
+  storeId     String
+  delta       Int // +receive / −sell / ±adjust
+  reason      StockReason
+  orderId     String?
+  importJobId String?
+  actorType   ActorType?
+  actorId     String?
+  note        String?
+  createdAt   DateTime    @default(now())
+
+  @@index([productId, createdAt(sort: Desc)])
+  @@index([storeId, createdAt(sort: Desc)])
+  @@index([orderId])
+}
+
+// ─────────────────────────── CART ───────────────────────────
+
+model Cart {
+  id        String   @id @default(uuid(7))
+  userId    String
+  storeId   String
+  updatedAt DateTime @updatedAt
+
+  user  User       @relation(fields: [userId], references: [id])
+  items CartItem[]
+
+  @@unique([userId, storeId]) // one active cart per user per store
+}
+
+model CartItem {
+  id        String @id @default(uuid(7))
+  cartId    String
+  productId String
+  qty       Int
+
+  cart    Cart    @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  @@unique([cartId, productId])
+}
+
+// ─────────────────────────── ORDERS ───────────────────────────
+
+// Per-day sequence for human-readable order numbers (HE-260730-0042).
+model OrderSeq {
+  date String @id // "260730"
+  seq  Int    @default(0)
+}
+
+model Order {
+  id             String @id @default(uuid(7))
+  orderNumber    String @unique // HE-260730-0042 — for support calls
+  idempotencyKey String @unique // flaky networks retry; orders must not double-place
+
+  userId    String
+  storeId   String
+  addressId String
+  zoneId    String
+
+  // TWO independent axes (SRS §2.4: admin assigns while store still packs).
+  // One merged enum = ~20 unreachable-but-representable states. Never.
+  fulfillmentStatus FulfillmentStatus @default(PLACED)
+  assignmentStatus  AssignmentStatus  @default(UNASSIGNED)
+  driverId          String?
+
+  // Money — all integer paise.
+  itemTotalPaise    Int
+  deliveryFeePaise  Int
+  discountPaise     Int @default(0)
+  taxPaise          Int @default(0)
+  finalPaise        Int
+  codDuePaise       Int @default(0)
+  codCollectedPaise Int @default(0) // recorded separately: short collections must be VISIBLE
+
+  paymentMethod PaymentMethod @default(COD)
+  paymentStatus PaymentStatus @default(PENDING)
+
+  // ETA telemetry — logged from order #1; after ~2 weeks of actuals, the
+  // per-store/zone constants get overwritten with learned percentiles (P70).
+  prepMinutes    Int?
+  etaMinutes     Int?
+  etaLowMinutes  Int?
+  etaHighMinutes Int?
+  etaPromisedAt  DateTime?
+  distanceKm     Float?
+
+  // OTPs — hashed, never plaintext.
+  pickupOtpHash   String?
+  deliveryOtpHash String?
+  otpAttempts     Int     @default(0)
+
+  placedAt     DateTime  @default(now())
+  acceptedAt   DateTime?
+  readyAt      DateTime?
+  assignedAt   DateTime?
+  pickedUpAt   DateTime?
+  deliveredAt  DateTime?
+  cancelledAt  DateTime?
+  cancelReason String?
+  rejectReason String?
+
+  user        User                 @relation(fields: [userId], references: [id])
+  store       Store                @relation(fields: [storeId], references: [id])
+  address     Address              @relation(fields: [addressId], references: [id])
+  driver      Driver?              @relation(fields: [driverId], references: [id])
+  items       OrderItem[]
+  history     OrderStatusHistory[]
+  payments    Payment[]
+  refunds     Refund[]
+  codEntries  CodLedger[]
+  assignments DriverAssignment[]
+  rating      Rating?
+
+  @@index([storeId, fulfillmentStatus, placedAt(sort: Desc)]) // POS queue
+  @@index([assignmentStatus, fulfillmentStatus, placedAt]) // admin dispatch board
+  @@index([userId, placedAt(sort: Desc)]) // customer order history
+  @@index([driverId, deliveredAt]) // driver daily summary
+  @@index([placedAt]) // reports + future monthly partitioning
+}
+
+// Full snapshot as of order time — prices change; a 3-month-old invoice must not.
+model OrderItem {
+  id               String @id @default(uuid(7))
+  orderId          String
+  productId        String // reference only — NEVER joined for display
+  nameSnapshot     String
+  unitSnapshot     Unit
+  packSizeSnapshot String
+  pricePaise       Int
+  mrpPaise         Int?
+  discountPaise    Int    @default(0)
+  taxBps           Int    @default(0)
+  qty              Int
+  lineTotalPaise   Int
+
+  order   Order   @relation(fields: [orderId], references: [id])
+  product Product @relation(fields: [productId], references: [id])
+
+  @@index([orderId])
+}
+
+// Append-only. FR-C-010 (customer timeline) and FR-A-003 (admin audit) read this.
+model OrderStatusHistory {
+  id         String    @id @default(uuid(7))
+  orderId    String
+  fromStatus String?
+  toStatus   String
+  actorType  ActorType
+  actorId    String?
+  note       String?
+  createdAt  DateTime  @default(now())
+
+  order Order @relation(fields: [orderId], references: [id])
+
+  @@index([orderId, createdAt])
+}
+
+// ─────────────────────────── DRIVERS ───────────────────────────
+
+model Driver {
+  id            String       @id @default(uuid(7))
+  phone         String       @unique
+  name          String
+  status        DriverStatus @default(OFFLINE)
+  vehicleNumber String?
+  photoUrl      String?
+
+  // FR-A-005: max COD a driver may carry — enforced AT ASSIGNMENT TIME.
+  codLimitPaise Int @default(500000) // ₹5,000
+
+  // Last-known position only (rule: no location-history table in v1).
+  lastLat    Float?
+  lastLng    Float?
+  lastSeenAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  orders      Order[]
+  assignments DriverAssignment[]
+  codEntries  CodLedger[]
+
+  @@index([status])
+}
+
+// Assignment history — reassignments are visible, never overwritten.
+model DriverAssignment {
+  id         String    @id @default(uuid(7))
+  orderId    String
+  driverId   String
+  assignedBy String // AdminUser.id — admin-only dispatch per SRS §1.3
+  active     Boolean   @default(true)
+  endedAt    DateTime?
+  endReason  String?
+  createdAt  DateTime  @default(now())
+
+  order  Order  @relation(fields: [orderId], references: [id])
+  driver Driver @relation(fields: [driverId], references: [id])
+
+  @@index([orderId, active])
+  @@index([driverId, active])
+}
+
+// ─────────────────────── PAYMENTS & COD LEDGER ───────────────────────
+
+// Gateway-shaped from day one: providerRef/providerPayload/idempotencyKey sit
+// unused under COD. Adding Razorpay later = one provider class + one webhook
+// route. Zero DB changes.
+model Payment {
+  id              String        @id @default(uuid(7))
+  orderId         String
+  method          PaymentMethod @default(COD)
+  status          PaymentStatus @default(PENDING)
+  amountPaise     Int
+  providerRef     String?
+  providerPayload Json?
+  idempotencyKey  String?       @unique
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  order Order @relation(fields: [orderId], references: [id])
+
+  @@index([orderId])
+}
+
+// COD-only: uncollected cash needs no monetary refund (§7.1) — refunds become
+// adjustments/credit notes. SOURCE type activates once a gateway exists.
+model Refund {
+  id          String       @id @default(uuid(7))
+  orderId     String
+  type        RefundType
+  status      RefundStatus @default(PENDING)
+  amountPaise Int
+  reason      String
+  createdBy   String // AdminUser.id
+  approvedBy  String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  order Order @relation(fields: [orderId], references: [id])
+
+  @@index([orderId])
+  @@index([status])
+}
+
+// THE money path in a COD business. Append-only; a driver's outstanding
+// balance = SUM(amountPaise), never a mutable counter on the driver row.
+model CodLedger {
+  id          String       @id @default(uuid(7))
+  driverId    String
+  orderId     String?
+  entryType   CodEntryType
+  amountPaise Int // signed: COLLECTED +, DEPOSITED −
+  confirmedBy String? // AdminUser.id — required for DEPOSITED entries
+  note        String?
+  createdAt   DateTime     @default(now())
+
+  driver Driver @relation(fields: [driverId], references: [id])
+  order  Order? @relation(fields: [orderId], references: [id])
+
+  @@index([driverId, createdAt(sort: Desc)])
+  @@index([orderId])
+}
+
+// ─────────────────────────── RATINGS ───────────────────────────
+
+model Rating {
+  id        String   @id @default(uuid(7))
+  orderId   String   @unique
+  userId    String
+  stars     Int // 1–5, validated in service
+  comment   String?
+  createdAt DateTime @default(now())
+
+  order Order @relation(fields: [orderId], references: [id])
+  user  User  @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+// ─────────────────── NOTIFICATIONS & DEVICES ───────────────────
+
+model DeviceToken {
+  id        String          @id @default(uuid(7))
+  ownerType DeviceOwnerType
+  ownerId   String
+  platform  DevicePlatform  @default(ANDROID)
+  token     String          @unique
+  updatedAt DateTime        @updatedAt
+
+  @@index([ownerType, ownerId])
+}
+
+// Transactional outbox: state changes write an event here in the SAME
+// transaction; workers fan out to FCM/sockets. Replayable when FCM has a bad day.
+model NotificationOutbox {
+  id          String       @id @default(uuid(7))
+  eventType   String // e.g. order.placed, order.assigned
+  payload     Json
+  status      OutboxStatus @default(PENDING)
+  attempts    Int          @default(0)
+  availableAt DateTime     @default(now()) // backoff scheduling
+  processedAt DateTime?
+  createdAt   DateTime     @default(now())
+
+  @@index([status, availableAt])
+}
+
+// ─────────────────────── PROMO BANNERS ───────────────────────
+
+/**
+ * Home-screen carousel. Scheduling is a date WINDOW, not a manual on/off —
+ * a Diwali banner set to expire cannot be left running into December because
+ * nobody remembered to switch it off.
+ */
+model Banner {
+  id        String  @id @default(uuid(7))
+  storeId   String? // null = show in every store
+  title     String
+  subtitle  String?
+  imageUrl  String?
+  /** Solid/gradient fallback when there's no image — banners never render empty. */
+  bgColor   String  @default("#0B3D2E")
+  ctaLabel  String?
+
+  linkType  BannerLinkType @default(NONE)
+  /** categoryId, productId, or a search term — meaning depends on linkType. */
+  linkValue String?
+
+  sortOrder Int       @default(0)
+  isActive  Boolean   @default(true)
+  startsAt  DateTime?
+  endsAt    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  store Store? @relation(fields: [storeId], references: [id])
+
+  @@index([isActive, sortOrder])
+  @@index([storeId, isActive])
+}
+
+// ─────────────────────── BULK IMPORT (FR-P-006) ───────────────────────
+
+model ImportJob {
+  id          String       @id @default(uuid(7))
+  storeId     String
+  uploadedBy  String
+  fileName    String
+  status      ImportStatus @default(PENDING)
+  totalRows   Int          @default(0)
+  successRows Int          @default(0)
+  errorRows   Int          @default(0)
+  createdAt   DateTime     @default(now())
+  finishedAt  DateTime?
+
+  errors ImportRowError[]
+
+  @@index([storeId, createdAt(sort: Desc)])
+}
+
+model ImportRowError {
+  id          String @id @default(uuid(7))
+  importJobId String
+  rowNumber   Int
+  message     String
+  raw         Json?
+
+  job ImportJob @relation(fields: [importJobId], references: [id], onDelete: Cascade)
+
+  @@index([importJobId])
+}
+
+// ─────────────────────────── AUDIT ───────────────────────────
+
+model AuditLog {
+  id        String    @id @default(uuid(7))
+  actorType ActorType
+  actorId   String?
+  action    String // e.g. product.price.update, driver.assign
+  entity    String
+  entityId  String
+  payload   Json?
+  createdAt DateTime  @default(now())
+
+  @@index([entity, entityId, createdAt(sort: Desc)])
+  @@index([actorType, actorId, createdAt(sort: Desc)])
+}

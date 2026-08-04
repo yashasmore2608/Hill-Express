@@ -1,0 +1,82 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/**
+ * Chart palette — validated with the dataviz validator against BOTH surfaces.
+ *
+ *   light (surface #FFFFFF): all 6 checks PASS
+ *     worst adjacent CVD ΔE 9.3 (deutan), normal-vision ΔE 20.9, all ≥3:1
+ *   dark  (surface #101815): all 6 checks PASS
+ *     worst adjacent CVD ΔE 8.8 (protan), normal-vision ΔE 15.4, all ≥3:1
+ *
+ * The dark column is the same six hues re-stepped for the dark band — not an
+ * inversion. Slot order is the CVD-safety mechanism; do not reorder or cycle.
+ */
+:root {
+  color-scheme: light;
+  --chart-surface: #ffffff;
+  --chart-grid: #e6ece8;
+  --chart-axis: #c2cfc8;
+  --ink-1: #0a1611;
+  --ink-2: #46564f;
+  --ink-3: #5c6d66;
+
+  --series-1: #0e9b63; /* green  — revenue / primary magnitude */
+  --series-2: #d4661f; /* orange — COD / money in motion */
+  --series-3: #2a78d6; /* blue   — orders */
+  --series-4: #c98500; /* amber  */
+  --series-5: #6b4fa8; /* violet */
+  --series-6: #d55181; /* magenta */
+
+  --status-good: #0ca30c;
+  --status-warning: #b8790a;
+  --status-serious: #ec835a;
+  --status-critical: #c0392f;
+}
+
+/**
+ * `data-theme` is the single source of truth — deliberately NOT
+ * prefers-color-scheme. The panel opens light regardless of the OS setting,
+ * and only the toggle changes it. This keeps the CSS variables and Tailwind's
+ * `dark:` utilities (also selector-driven) in lockstep.
+ */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --chart-surface: #101815;
+  --chart-grid: #24302b;
+  --chart-axis: #31403a;
+  --ink-1: #e8efea;
+  --ink-2: #9daea6;
+  --ink-3: #7c8d86;
+
+  --series-1: #17a06a;
+  --series-2: #d96e2c;
+  --series-3: #3987e5;
+  --series-4: #c08a18;
+  --series-5: #8a7de0;
+  --series-6: #cc6a93;
+
+  --status-good: #35c48f;
+  --status-warning: #d9b65c;
+  --status-serious: #f0a37a;
+  --status-critical: #f0776b;
+}
+
+@layer base {
+  body {
+    @apply bg-ground text-ink dark:bg-ground-dark dark:text-ink-dark antialiased;
+    font-family:
+      'Plus Jakarta Sans',
+      system-ui,
+      -apple-system,
+      'Segoe UI',
+      sans-serif;
+  }
+  /* Columns of digits must align; standalone hero numbers stay proportional. */
+  th,
+  td,
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}

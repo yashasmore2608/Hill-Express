@@ -1,0 +1,33 @@
+{
+  "name": "hill-express",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Hill Express — hyperlocal grocery delivery for hill towns. Customer/Driver/POS Android apps + Admin PWA + NestJS API.",
+  "packageManager": "pnpm@10.34.5",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "dev:api": "pnpm --filter @hillexpress/shared build && pnpm --filter @hillexpress/api start:dev",
+    "dev:customer": "pnpm --filter customer-app start",
+    "dev:driver": "pnpm --filter driver-app start",
+    "dev:pos": "pnpm --filter pos-app start",
+    "dev:admin": "pnpm --filter @hillexpress/admin-web dev",
+    "build": "pnpm -r --filter './packages/**' build && pnpm --filter @hillexpress/api build && pnpm --filter @hillexpress/admin-web build",
+    "typecheck": "pnpm -r typecheck",
+    "prisma:generate": "pnpm --filter @hillexpress/api prisma:generate",
+    "prisma:migrate": "pnpm --filter @hillexpress/api prisma:migrate",
+    "format": "prettier --write \"**/*.{ts,tsx,js,json,md}\""
+  },
+  "devDependencies": {
+    "prettier": "^3.3.3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@prisma/client",
+      "@prisma/engines",
+      "prisma",
+      "esbuild"
+    ]
+  }
+}

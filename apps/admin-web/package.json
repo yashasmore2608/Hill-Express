@@ -1,0 +1,31 @@
+{
+  "name": "@hillexpress/admin-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Hill Express admin panel — React + Vite, installable PWA. Dispatch board, catalogue ops, COD reconciliation, reports.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit -p tsconfig.json && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@hillexpress/shared": "workspace:*",
+    "@tanstack/react-query": "^5.101.4",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-router-dom": "^7.18.2"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.6.3",
+    "vite": "^6.0.0",
+    "vite-plugin-pwa": "^0.21.1"
+  }
+}
