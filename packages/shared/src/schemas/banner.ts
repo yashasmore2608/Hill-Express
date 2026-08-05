@@ -11,7 +11,20 @@ export const saveBannerSchema = z
   .object({
     title: z.string().trim().min(1).max(60),
     subtitle: z.string().trim().max(90).optional().or(z.literal('')),
-    imageUrl: z.string().url().max(500).optional().or(z.literal('')),
+    /**
+     * Either an absolute URL (artwork hosted elsewhere) or a relative path we
+     * issued ourselves from the upload endpoint, e.g. `/uploads/banners/x.webp`.
+     * Relative is preferred: the same row has to resolve for the admin panel on
+     * localhost, a phone on the LAN, and a production domain.
+     */
+    imageUrl: z
+      .string()
+      .max(500)
+      .refine((v) => v === '' || v.startsWith('/uploads/') || /^https?:\/\//.test(v), {
+        message: 'Must be an uploaded image or an http(s) URL',
+      })
+      .optional()
+      .or(z.literal('')),
     bgColor: hexColor.default('#0B3D2E'),
     ctaLabel: z.string().trim().max(24).optional().or(z.literal('')),
     linkType: z.enum(BANNER_LINK_TYPES).default('NONE'),

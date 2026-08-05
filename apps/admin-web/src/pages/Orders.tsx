@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { dateTime, rupees } from '../lib/format';
-import { EmptyState, Skeleton, StatusPill, TableScroll } from '../components/ui';
+import { EmptyState, PageHeader, Skeleton, StatusPill, TableScroll } from '../components/ui';
 
 interface Row {
   id: string;
@@ -48,12 +48,11 @@ export default function Orders() {
 
   return (
     <div className="flex flex-col gap-5">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Orders</h1>
-        <p className="text-sm text-ink3 dark:text-ink3-dark">
-          Every order, searchable by number or customer phone
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="Ledger"
+        title="Orders"
+        hint="Every order, searchable by number or customer phone"
+      />
 
       <div className="flex flex-wrap items-center gap-3">
         <input

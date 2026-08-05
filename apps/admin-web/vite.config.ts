@@ -28,6 +28,9 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/v1': 'http://localhost:3000',
+      // Uploaded banner artwork is stored as a relative path, so it has to
+      // resolve here too — otherwise every preview 404s against Vite itself.
+      '/uploads': 'http://localhost:3000',
     },
   },
 });

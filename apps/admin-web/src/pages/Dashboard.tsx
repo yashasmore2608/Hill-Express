@@ -4,7 +4,7 @@ import type { AdminAnalyticsDto } from '@hillexpress/shared';
 import { api } from '../lib/api';
 import { count, rupees, rupeesShort, shortDate, statusLabel } from '../lib/format';
 import { BarList, ChartFrame, ColumnChart, StatusMix, TimeSeriesChart } from '../components/charts';
-import { Card, Skeleton, StatTile } from '../components/ui';
+import { Card, PageHeader, Segmented, Skeleton, StatTile } from '../components/ui';
 
 const RANGES = [
   { days: 7, label: '7 days' },
@@ -37,70 +37,62 @@ export default function Dashboard() {
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Filters in one row above the charts */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Overview</h1>
-          <p className="text-sm text-ink3 dark:text-ink3-dark">
-            Last {rangeDays} days · compared with the {rangeDays} before
-          </p>
-        </div>
-        <div
-          role="group"
-          aria-label="Date range"
-          className="flex rounded-full border border-line bg-surface p-1 dark:border-line-dark dark:bg-surface-dark"
-        >
-          {RANGES.map((r) => (
-            <button
-              key={r.days}
-              onClick={() => setRangeDays(r.days)}
-              aria-pressed={rangeDays === r.days}
-              className={`rounded-full px-4 py-1.5 text-sm font-semibold transition ${
-                rangeDays === r.days
-                  ? 'bg-moss text-white dark:bg-moss-dark dark:text-[#06120D]'
-                  : 'text-ink2 dark:text-ink2-dark'
-              }`}
-            >
-              {r.label}
-            </button>
-          ))}
-        </div>
-      </div>
+      <PageHeader
+        eyebrow="Live"
+        title="Overview"
+        hint={`Last ${rangeDays} days · compared with the ${rangeDays} before`}
+        actions={
+          <Segmented
+            label="Date range"
+            value={rangeDays}
+            onChange={setRangeDays}
+            options={RANGES.map((r) => ({ value: r.days, label: r.label }))}
+          />
+        }
+      />
 
       {/* ── KPI tiles ── */}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatTile
           label="Revenue (delivered)"
+          icon="₹" index={0}
           value={rupees(k.revenuePaise)}
           deltaPct={k.revenueDeltaPct}
           hint="vs previous period"
         />
         <StatTile
           label="Orders"
+          icon="🧾" index={1}
           value={count(k.orders)}
           deltaPct={k.ordersDeltaPct}
           hint={`${k.deliveredCount} delivered`}
         />
-        <StatTile label="Avg order value" value={rupees(k.avgOrderValuePaise)} />
+        <StatTile label="Avg order value"
+          icon="📈" index={2} value={rupees(k.avgOrderValuePaise)} />
         <StatTile
           label="Cash with drivers"
+          icon="💵" index={3}
           value={rupees(k.codOutstandingPaise)}
           tone="accent"
           hint="undeposited COD"
         />
         <StatTile
           label="Fulfilment rate"
+          icon="✅" index={4}
           value={`${k.fulfilmentRatePct}%`}
           hint={`${k.cancelledCount} cancelled · ${k.rejectedCount} rejected`}
         />
         <StatTile
           label="Median delivery"
+          icon="⏱️" index={5}
           value={k.medianDeliveryMinutes != null ? `${k.medianDeliveryMinutes} min` : '—'}
           hint={k.onTimePct != null ? `${k.onTimePct}% within promise` : 'no delivered orders yet'}
         />
-        <StatTile label="Live orders" value={count(k.activeOrders)} hint="in flight now" />
+        <StatTile label="Live orders"
+          icon="🛵" index={6} value={count(k.activeOrders)} hint="in flight now" />
         <StatTile
           label="Stock alerts"
+          icon="📦" index={7}
           value={count(k.lowStockCount + k.outOfStockCount)}
           tone={k.outOfStockCount > 0 ? 'critical' : k.lowStockCount > 0 ? 'warning' : 'default'}
           hint={`${k.lowStockCount} low · ${k.outOfStockCount} out`}

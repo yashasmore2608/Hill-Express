@@ -1,15 +1,47 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import type { Banner } from '@prisma/client';
 import type { AdminBannerDto, BannerDto, SaveBannerInput } from '@hillexpress/shared';
 import { PrismaService } from '../prisma/prisma.service';
+import { UploadsService } from '../uploads/uploads.service';
 
 /** Empty strings arrive from HTML forms; the DB wants real nulls. */
 const orNull = (v: string | undefined | null): string | null =>
   v == null || v.trim() === '' ? null : v.trim();
 
 @Injectable()
-export class BannersService {
-  constructor(private readonly prisma: PrismaService) {}
+export class BannersService implements OnModuleInit {
+  private readonly log = new Logger(BannersService.name);
+  private sweepTimer?: NodeJS.Timeout;
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly uploads: UploadsService,
+  ) {}
+
+  /**
+   * Artwork uploaded but never saved onto a banner would otherwise sit on disk
+   * forever — abandoning a half-filled form is the normal case, not the edge
+   * case. Swept daily, and only files older than the sweeper's age floor are
+   * eligible, so a file backing an unsaved draft is never pulled out from
+   * under the person still filling in the form.
+   */
+  onModuleInit(): void {
+    if (!this.prisma.isConfigured) return;
+    const run = () => {
+      void this.sweepUploads().catch((e) =>
+        this.log.warn(`upload sweep failed: ${e instanceof Error ? e.message : e}`),
+      );
+    };
+    this.sweepTimer = setInterval(run, 24 * 3_600_000);
+    this.sweepTimer.unref(); // never hold the process open
+    setTimeout(run, 60_000).unref(); // once shortly after boot
+  }
+
+  private async sweepUploads(): Promise<void> {
+    const rows = await this.prisma.db.banner.findMany({ select: { imageUrl: true } });
+    const referenced = new Set(rows.map((r) => r.imageUrl).filter((u): u is string => !!u));
+    await this.uploads.sweepOrphans(referenced);
+  }
 
   private isLive(b: Banner, now = new Date()): boolean {
     if (!b.isActive) return false;
@@ -102,6 +134,11 @@ export class BannersService {
       where: { id },
       data: this.toData(input),
     });
+    // Swapping the artwork orphans the old file — bin it after the write
+    // succeeds, and only if it is genuinely a different one.
+    if (existing.imageUrl && existing.imageUrl !== updated.imageUrl) {
+      await this.uploads.removeByUrl(existing.imageUrl);
+    }
     return this.toAdmin(updated);
   }
 
@@ -117,6 +154,7 @@ export class BannersService {
     const existing = await this.prisma.db.banner.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('Banner not found');
     await this.prisma.db.banner.delete({ where: { id } });
+    await this.uploads.removeByUrl(existing.imageUrl);
     return { ok: true };
   }
 }

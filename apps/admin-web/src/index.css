@@ -33,6 +33,23 @@
   --status-warning: #b8790a;
   --status-serious: #ec835a;
   --status-critical: #c0392f;
+
+  /* ── Surface craft ──────────────────────────────────────────────────────
+     Elevation is a tinted shadow, not black at low opacity: neutral black
+     over a warm surface reads as grey dirt. These are spruce-tinted so the
+     shadow belongs to the palette. */
+  --shadow-1: 0 1px 2px rgba(11, 61, 46, 0.05), 0 1px 3px rgba(11, 61, 46, 0.04);
+  --shadow-2: 0 2px 4px rgba(11, 61, 46, 0.05), 0 8px 20px -6px rgba(11, 61, 46, 0.1);
+  --shadow-3: 0 4px 8px rgba(11, 61, 46, 0.06), 0 20px 40px -12px rgba(11, 61, 46, 0.16);
+  --ring: rgba(14, 155, 99, 0.4);
+
+  /* The page is not flat white — two very wide, very faint colour washes sit
+     behind everything so cards have something to lift away from. */
+  --wash: radial-gradient(1200px 600px at 12% -8%, rgba(14, 155, 99, 0.07), transparent 60%),
+    radial-gradient(1000px 520px at 92% 4%, rgba(212, 102, 31, 0.055), transparent 62%);
+  --brand-grad: linear-gradient(135deg, #0b3d2e 0%, #16704f 55%, #0e9b63 100%);
+  --glass: rgba(255, 255, 255, 0.72);
+  --hairline: rgba(11, 61, 46, 0.08);
 }
 
 /**
@@ -61,6 +78,20 @@
   --status-warning: #d9b65c;
   --status-serious: #f0a37a;
   --status-critical: #f0776b;
+
+  /* Dark elevation cannot use shadow alone — there is nothing darker than the
+     background to cast onto. Depth here comes from a lifted surface plus a
+     top hairline, with the shadow only deepening the separation. */
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-2: 0 2px 6px rgba(0, 0, 0, 0.45), 0 10px 26px -10px rgba(0, 0, 0, 0.6);
+  --shadow-3: 0 6px 14px rgba(0, 0, 0, 0.5), 0 24px 50px -14px rgba(0, 0, 0, 0.7);
+  --ring: rgba(23, 160, 106, 0.5);
+
+  --wash: radial-gradient(1200px 600px at 12% -8%, rgba(23, 160, 106, 0.1), transparent 60%),
+    radial-gradient(1000px 520px at 92% 4%, rgba(217, 110, 44, 0.075), transparent 62%);
+  --brand-grad: linear-gradient(135deg, #0d2a21 0%, #12513a 55%, #17a06a 100%);
+  --glass: rgba(16, 24, 21, 0.72);
+  --hairline: rgba(255, 255, 255, 0.07);
 }
 
 @layer base {
@@ -72,11 +103,113 @@
       -apple-system,
       'Segoe UI',
       sans-serif;
+    background-image: var(--wash);
+    background-attachment: fixed;
   }
   /* Columns of digits must align; standalone hero numbers stay proportional. */
   th,
   td,
   .tabular {
     font-variant-numeric: tabular-nums;
+  }
+
+  /* One focus ring everywhere, and only for keyboard users. Removing the
+     outline without replacing it makes the panel unusable without a mouse. */
+  :where(a, button, input, select, textarea, [tabindex]):focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+    border-radius: 10px;
+  }
+
+  ::selection {
+    background: var(--ring);
+    color: #fff;
+  }
+
+  /* Scrollbars styled to the surface — the default Windows grey is the single
+     most dated-looking thing on an otherwise finished page. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--chart-axis) transparent;
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--chart-axis);
+    border: 3px solid transparent;
+    background-clip: content-box;
+    border-radius: 999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--ink-3);
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+@layer components {
+  /* Frosted panel used by the sidebar and sticky header. */
+  .glass {
+    background: var(--glass);
+    backdrop-filter: saturate(150%) blur(14px);
+    -webkit-backdrop-filter: saturate(150%) blur(14px);
+  }
+
+  .shadow-e1 {
+    box-shadow: var(--shadow-1);
+  }
+  .shadow-e2 {
+    box-shadow: var(--shadow-2);
+  }
+  .shadow-e3 {
+    box-shadow: var(--shadow-3);
+  }
+
+  /* Brand gradient as a text fill — used once, on the wordmark. */
+  .brand-text {
+    background: var(--brand-grad);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  /* Content enters with a short rise. Staggered by --d on grids so a row of
+     tiles resolves left-to-right instead of appearing as one block. */
+  .rise {
+    animation: rise 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: var(--d, 0ms);
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes sheen {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* Motion is decoration here — every animation is safe to drop entirely. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

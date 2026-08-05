@@ -41,47 +41,65 @@ export default function Login() {
   };
 
   return (
-    <main className="flex min-h-screen items-center justify-center px-6">
+    <main className="relative flex min-h-screen items-center justify-center overflow-hidden px-6">
+      {/* Two soft brand blooms behind the card, so the page is a scene rather
+          than a form floating on flat white. */}
+      <span
+        aria-hidden
+        className="pointer-events-none absolute -left-40 -top-40 size-[520px] rounded-full opacity-[0.18] blur-3xl"
+        style={{ background: 'var(--brand-grad)' }}
+      />
+      <span
+        aria-hidden
+        className="pointer-events-none absolute -bottom-48 -right-40 size-[560px] rounded-full opacity-[0.14] blur-3xl"
+        style={{ background: 'radial-gradient(circle, var(--series-2), transparent 70%)' }}
+      />
+
       <form
         onSubmit={submit}
-        className="flex w-full max-w-sm flex-col gap-5 rounded-l border border-line bg-surface p-8 dark:border-line-dark dark:bg-surface-dark"
+        className="rise relative flex w-full max-w-sm flex-col gap-5 rounded-[22px] border border-[color:var(--hairline)] bg-surface p-8 shadow-e3 dark:bg-surface-dark"
       >
         <div className="flex flex-col gap-2">
-          <div className="flex size-12 items-center justify-center rounded-m bg-spruce text-2xl">
+          <div
+            className="flex size-14 items-center justify-center rounded-[17px] text-2xl shadow-e2"
+            style={{ background: 'var(--brand-grad)' }}
+          >
             🏔️
           </div>
-          <h1 className="text-2xl font-bold tracking-tight">Hill Express Admin</h1>
-          <p className="text-sm text-ink2 dark:text-ink2-dark">
+          <h1 className="text-[26px] font-extrabold leading-tight tracking-tight">
+            Hill Express <span className="brand-text">Admin</span>
+          </h1>
+          <p className="text-sm text-ink3 dark:text-ink3-dark">
             Dispatch, inventory and reports
           </p>
         </div>
 
         <label className="flex flex-col gap-1.5">
-          <span className="text-sm font-medium text-ink2 dark:text-ink2-dark">Email</span>
+          <span className="text-sm font-bold text-ink2 dark:text-ink2-dark">Email</span>
           <input
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             autoComplete="username"
             required
-            className="min-h-11 rounded-m border border-line2 bg-surface px-3 text-[15px] outline-none focus:border-moss dark:border-line2-dark dark:bg-surface2-dark"
+            className="min-h-11 rounded-[12px] border border-[color:var(--hairline)] bg-surface px-3 text-[15px] outline-none transition focus:border-moss dark:bg-surface2-dark"
           />
         </label>
 
         <label className="flex flex-col gap-1.5">
-          <span className="text-sm font-medium text-ink2 dark:text-ink2-dark">Password</span>
+          <span className="text-sm font-bold text-ink2 dark:text-ink2-dark">Password</span>
           <input
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             autoComplete="current-password"
             required
-            className="min-h-11 rounded-m border border-line2 bg-surface px-3 text-[15px] outline-none focus:border-moss dark:border-line2-dark dark:bg-surface2-dark"
+            className="min-h-11 rounded-[12px] border border-[color:var(--hairline)] bg-surface px-3 text-[15px] outline-none transition focus:border-moss dark:bg-surface2-dark"
           />
         </label>
 
         {error ? (
-          <p className="text-sm text-critical dark:text-critical-dark">{error}</p>
+          <p className="rounded-[12px] bg-critical-soft px-3 py-2 text-sm font-semibold text-critical dark:bg-critical-soft-dark dark:text-critical-dark">{error}</p>
         ) : null}
 
         <Button type="submit" disabled={busy || !password} className="min-h-11">
@@ -93,14 +111,14 @@ export default function Login() {
         <div
           role="group"
           aria-label="Appearance"
-          className="flex gap-1 self-center rounded-full bg-surface2 p-1 dark:bg-surface2-dark"
+          className="flex gap-1 self-center rounded-full border border-[color:var(--hairline)] bg-surface2 p-1 dark:bg-surface2-dark"
         >
           {(['light', 'dark'] as const).map((m) => (
             <button
               key={m}
               type="button"
               onClick={() => setTheme(m)}
-              className="rounded-full px-3 py-1 text-xs font-semibold capitalize text-ink2 dark:text-ink2-dark"
+              className="rounded-full px-3 py-1.5 text-xs font-bold capitalize text-ink2 transition hover:bg-surface dark:text-ink2-dark dark:hover:bg-surface-dark"
             >
               {m === 'light' ? '☀️' : '🌙'} {m}
             </button>

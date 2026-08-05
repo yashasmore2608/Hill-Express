@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { downloadCsv } from '../lib/api';
-import { Button, Card } from '../components/ui';
+import { Button, Card, PageHeader } from '../components/ui';
 
 /** FR-A-007 — the reason Admin is a desktop surface. */
 const REPORTS = [
@@ -51,12 +51,11 @@ export default function Reports() {
 
   return (
     <div className="flex flex-col gap-5">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Reports</h1>
-        <p className="text-sm text-ink3 dark:text-ink3-dark">
-          CSV downloads, ready to open in Excel or Google Sheets
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="Exports"
+        title="Reports"
+        hint="CSV downloads, ready to open in Excel or Google Sheets"
+      />
 
       <div className="flex items-center gap-3">
         <span className="text-sm text-ink2 dark:text-ink2-dark">Period</span>

@@ -25,10 +25,10 @@ export function ChartFrame({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-l border border-line bg-surface p-5 dark:border-line-dark dark:bg-surface-dark">
+    <section className="rise rounded-[18px] border border-[color:var(--hairline)] bg-surface p-5 shadow-e1 transition duration-200 hover:shadow-e2 dark:bg-surface-dark">
       <header className="mb-4 flex items-start justify-between gap-3">
         <div>
-          <h3 className="text-[15px] font-semibold leading-tight">{title}</h3>
+          <h3 className="text-[15px] font-extrabold leading-tight tracking-tight">{title}</h3>
           {subtitle ? (
             <p className="mt-0.5 text-xs text-ink3 dark:text-ink3-dark">{subtitle}</p>
           ) : null}

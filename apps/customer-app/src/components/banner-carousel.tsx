@@ -12,6 +12,7 @@ import Animated, { FadeIn } from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
 import type { BannerDto } from '@hillexpress/shared';
 import { AppText, Skeleton, useTheme } from '@hillexpress/ui';
+import { assetUrl } from '../lib/api';
 
 const GUTTER = 20;
 const GAP = 12;
@@ -118,9 +119,9 @@ export function BannerCarousel({
                 transform: [{ scale: pressed ? 0.985 : 1 }],
               })}
             >
-              {b.imageUrl ? (
+              {assetUrl(b.imageUrl) ? (
                 <Image
-                  source={{ uri: b.imageUrl }}
+                  source={{ uri: assetUrl(b.imageUrl)! }}
                   contentFit="cover"
                   transition={220}
                   cachePolicy="memory-disk"

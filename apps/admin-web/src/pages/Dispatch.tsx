@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { AdminDispatchOrderDto, AdminDriverDto } from '@hillexpress/shared';
 import { ApiError, api } from '../lib/api';
 import { minutesAgo, rupees } from '../lib/format';
-import { Button, Card, EmptyState, Skeleton, StatusPill } from '../components/ui';
+import { Button, Card, EmptyState, PageHeader, Skeleton, StatusPill } from '../components/ui';
 
 /**
  * FR-A-003 dispatch board. Two panes side by side — orders awaiting a driver on
@@ -44,12 +44,11 @@ export default function Dispatch() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Dispatch</h1>
-        <p className="text-sm text-ink3 dark:text-ink3-dark">
-          Pick an order, then a driver. The COD limit is enforced at assignment.
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="Operations"
+        title="Dispatch"
+        hint="Pick an order, then a driver. The COD limit is enforced at assignment."
+      />
 
       {error ? (
         <div className="rounded-m border border-critical bg-critical-soft px-4 py-3 text-sm text-critical dark:bg-critical-soft-dark dark:text-critical-dark">

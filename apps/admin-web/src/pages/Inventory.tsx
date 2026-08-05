@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { rupees } from '../lib/format';
-import { EmptyState, Skeleton, TableScroll } from '../components/ui';
+import { EmptyState, PageHeader, Skeleton, TableScroll } from '../components/ui';
 
 interface Row {
   id: string;
@@ -43,12 +43,11 @@ export default function Inventory() {
 
   return (
     <div className="flex flex-col gap-5">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Inventory</h1>
-        <p className="text-sm text-ink3 dark:text-ink3-dark">
-          Every product across all stores. Reserved = held by live carts.
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="Catalogue"
+        title="Inventory"
+        hint="Every product across all stores. Reserved = held by live carts."
+      />
 
       <div className="flex flex-wrap items-center gap-3">
         <input

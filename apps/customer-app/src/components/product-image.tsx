@@ -3,6 +3,7 @@ import { View, type ViewStyle } from 'react-native';
 import { Image } from 'expo-image';
 import { AppText, useTheme } from '@hillexpress/ui';
 import { categoryTint, productEmoji } from '../lib/emoji';
+import { assetUrl } from '../lib/api';
 
 interface ProductImageProps {
   name: string;
@@ -36,7 +37,8 @@ export function ProductImage({
 }: ProductImageProps) {
   const { colors, mode } = useTheme();
   const [failed, setFailed] = useState(false);
-  const showPhoto = Boolean(imageUrl) && !failed;
+  const photo = assetUrl(imageUrl);
+  const showPhoto = Boolean(photo) && !failed;
 
   return (
     <View
@@ -61,7 +63,7 @@ export function ProductImage({
     >
       {showPhoto ? (
         <Image
-          source={{ uri: imageUrl! }}
+          source={{ uri: photo! }}
           // contain, not cover: pack shots must not be cropped through the label
           contentFit="contain"
           transition={220}

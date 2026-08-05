@@ -12,6 +12,7 @@ import { OrdersModule } from './orders/orders.module';
 import { DriversModule } from './drivers/drivers.module';
 import { AdminModule } from './admin/admin.module';
 import { BannersModule } from './banners/banners.module';
+import { UploadsModule } from './uploads/uploads.module';
 import { env } from './config/env';
 
 @Module({
@@ -38,6 +39,7 @@ import { env } from './config/env';
     DriversModule,
     AdminModule,
     BannersModule,
+    UploadsModule,
   ],
   controllers: [HealthController],
 })

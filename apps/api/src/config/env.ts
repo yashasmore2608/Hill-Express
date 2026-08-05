@@ -31,6 +31,12 @@ const envSchema = z.object({
     .enum(['true', 'false'])
     .optional()
     .transform((v) => v === 'true'),
+  /**
+   * Where uploaded images live. Relative paths resolve from the API package
+   * root, so the default works in dev with no configuration. In Docker this
+   * points at a mounted volume — uploads must survive a container rebuild.
+   */
+  UPLOAD_DIR: z.string().default('uploads'),
 });
 
 const parsed = envSchema.safeParse(process.env);

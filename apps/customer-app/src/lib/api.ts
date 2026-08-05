@@ -15,6 +15,17 @@ const resolveBaseUrl = (): string => {
 
 export const API_BASE = resolveBaseUrl();
 
+/**
+ * Images the admin uploaded are stored as a relative path (`/uploads/…`) so the
+ * same database row resolves for the panel on localhost, this phone on the LAN,
+ * and a production domain. Absolute URLs (externally hosted artwork) pass
+ * through untouched.
+ */
+export const assetUrl = (url: string | null | undefined): string | null => {
+  if (!url) return null;
+  return url.startsWith('/') ? `${API_BASE}${url}` : url;
+};
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
