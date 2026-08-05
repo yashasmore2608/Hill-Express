@@ -13,4 +13,14 @@ export const saveAddressSchema = z
   })
   .merge(latLngSchema);
 
+/**
+ * Editing an address is a PATCH: "fix the flat number" should not require
+ * re-sending the pincode and coordinates. At least one field must be present,
+ * so an empty body is a 400 rather than a silent no-op.
+ */
+export const patchAddressSchema = saveAddressSchema
+  .partial()
+  .refine((v) => Object.keys(v).length > 0, { message: 'Nothing to update' });
+
 export type SaveAddressInput = z.infer<typeof saveAddressSchema>;
+export type PatchAddressInput = z.infer<typeof patchAddressSchema>;

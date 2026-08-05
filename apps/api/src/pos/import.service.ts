@@ -118,7 +118,7 @@ export class ImportService {
         });
 
         if (existing) {
-          const stockDelta = row.stock - existing.stockQty;
+          const stockDelta = row.stock - Number(existing.stockQty);
           await db.$transaction([
             db.product.update({
               where: { id: existing.id },

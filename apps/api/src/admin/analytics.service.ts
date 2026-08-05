@@ -6,9 +6,13 @@ import type {
   TimePointDto,
   TopProductDto,
 } from '@hillexpress/shared';
+import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 const DAY_MS = 86_400_000;
+
+/** Prisma DECIMAL -> plain number. Quantities only; money stays integer paise. */
+const qty = (d: Prisma.Decimal | number): number => Number(d);
 
 @Injectable()
 export class AnalyticsService {
@@ -84,10 +88,10 @@ export class AnalyticsService {
     const settled = delivered.length + cancelled.length + rejected.length;
 
     const lowStockCount = products.filter((p) => {
-      const a = Math.max(0, p.stockQty - p.reservedQty);
-      return a > 0 && a <= p.lowStockAt;
+      const a = Math.max(0, qty(p.stockQty) - qty(p.reservedQty));
+      return a > 0 && a <= qty(p.lowStockAt);
     }).length;
-    const outOfStockCount = products.filter((p) => p.stockQty - p.reservedQty <= 0).length;
+    const outOfStockCount = products.filter((p) => qty(p.stockQty) - qty(p.reservedQty) <= 0).length;
 
     // ── daily series (zero-filled so the chart has no gaps) ──
     const buckets = new Map<string, TimePointDto>();
@@ -144,7 +148,7 @@ export class AnalyticsService {
           qty: 0,
           revenuePaise: 0,
         };
-        p.qty += l.qty;
+        p.qty += qty(l.qty);
         p.revenuePaise += l.lineTotalPaise;
         byProduct.set(l.productId, p);
 

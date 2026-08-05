@@ -7,7 +7,9 @@ import { MAX_QTY_PER_ITEM } from '../domain/bill';
 export const setCartItemSchema = z.object({
   storeId: idSchema,
   productId: idSchema,
-  qty: z.number().int().min(0).max(MAX_QTY_PER_ITEM),
+  /** DECIMAL(12,3): loose goods sell in halves and quarters, so this is
+   *  deliberately not an integer. 0 removes the line. */
+  qty: z.number().min(0).max(MAX_QTY_PER_ITEM).multipleOf(0.001),
 });
 
 export type SetCartItemInput = z.infer<typeof setCartItemSchema>;

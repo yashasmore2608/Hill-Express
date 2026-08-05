@@ -5,8 +5,12 @@ import {
   type CartDto,
   type SetCartItemInput,
 } from '@hillexpress/shared';
+import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { toProductDto } from '../catalog/product.mapper';
+
+/** Prisma DECIMAL -> plain number. Quantities only; money stays integer paise. */
+const qty = (d: Prisma.Decimal | number): number => Number(d);
 
 @Injectable()
 export class CartService {
@@ -37,7 +41,7 @@ export class CartService {
       create: { userId, storeId: input.storeId },
     });
 
-    const availableQty = Math.max(0, product.stockQty - product.reservedQty);
+    const availableQty = Math.max(0, qty(product.stockQty) - qty(product.reservedQty));
     const clamped = Math.min(input.qty, availableQty, MAX_QTY_PER_ITEM);
 
     if (clamped === 0) {
@@ -69,7 +73,7 @@ export class CartService {
       .map((i) => ({
         productId: i.productId,
         // Availability can drop between adds — reflect reality, don't error.
-        qty: Math.min(i.qty, Math.max(0, i.product.stockQty - i.product.reservedQty)),
+        qty: Math.min(qty(i.qty), Math.max(0, qty(i.product.stockQty) - qty(i.product.reservedQty))),
         product: toProductDto(i.product),
       }))
       .filter((i) => i.qty > 0);

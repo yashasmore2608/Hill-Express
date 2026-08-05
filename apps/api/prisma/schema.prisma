@@ -33,6 +33,16 @@ enum UserStatus {
   BLOCKED
 }
 
+/**
+ * Spec 2.1 record_status. Kept alongside deletedAt: deletedAt answers
+ * "when", recordStatus answers "what state" for reporting filters.
+ */
+enum RecordStatus {
+  ACTIVE
+  INACTIVE
+  DELETED
+}
+
 enum Unit {
   KG
   G
@@ -162,7 +172,9 @@ enum DeviceOwnerType {
   ADMIN
 }
 
-/** What tapping a promo banner opens. */
+/**
+ * What tapping a promo banner opens.
+ */
 enum BannerLinkType {
   NONE
   CATEGORY
@@ -290,24 +302,28 @@ model DeliveryConfig {
 // ─────────────────────── STORES & CATALOGUE ───────────────────────
 
 model Store {
-  id               String   @id @default(uuid(7))
-  name             String
-  code             String   @unique // HE-STORE-001
-  phone            String
-  addressLine      String
-  lat              Float
-  lng              Float
-  elevationM       Float?
-  zoneId           String
-  isOpen           Boolean  @default(false) // operator toggle
-  isBlocked        Boolean  @default(false) // admin kill-switch
-  deliveryFeePaise Int      @default(0)
+  id                     String       @id @default(uuid(7))
+  name                   String
+  code                   String       @unique // HE-STORE-001
+  phone                  String
+  addressLine            String
+  lat                    Float
+  lng                    Float
+  elevationM             Float?
+  zoneId                 String
+  isOpen                 Boolean      @default(false) // operator toggle
+  isBlocked              Boolean      @default(false) // admin kill-switch
+  deliveryFeePaise       Int          @default(0)
   freeDeliveryAbovePaise Int?
-  openTime         String // "08:00"
-  closeTime        String // "22:00"
-  defaultPrepMin   Int      @default(15)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  openTime               String // "08:00"
+  closeTime              String // "22:00"
+  defaultPrepMin         Int          @default(15)
+  createdAt              DateTime     @default(now())
+  updatedAt              DateTime     @updatedAt
+  createdBy              String?
+  updatedBy              String?
+  recordStatus           RecordStatus @default(ACTIVE)
+  versionNo              Int          @default(0)
 
   zone       DeliveryZone    @relation(fields: [zoneId], references: [id])
   config     DeliveryConfig?
@@ -334,7 +350,7 @@ model Category {
 }
 
 model Product {
-  id            String    @id @default(uuid(7))
+  id            String                   @id @default(uuid(7))
   storeId       String
   sku           String? // §7.4 re-import match key
   name          String
@@ -344,20 +360,32 @@ model Product {
   packSize      String // "500 g", "6-pack"
   pricePaise    Int
   mrpPaise      Int? // strike-through price
-  discountPaise Int       @default(0)
-  taxBps        Int       @default(0) // basis points — integer, like all money math
-  stockQty      Int       @default(0)
-  reservedQty   Int       @default(0) // checkout reserves; pickup commits
-  lowStockAt    Int       @default(5) // FR-P-007 low-stock alert threshold
-  isAvailable   Boolean   @default(true)
+  discountPaise Int                      @default(0)
+  taxBps        Int                      @default(0) // basis points — integer, like all money math
+  // DECIMAL(12,3) per spec 2.2 — groceries sell by weight, so 0.5 kg of
+  // tomatoes has to be representable. Integers made that impossible.
+  stockQty      Decimal                  @default(0) @db.Decimal(12, 3)
+  reservedQty   Decimal                  @default(0) @db.Decimal(12, 3) // checkout reserves; pickup commits
+  lowStockAt    Decimal                  @default(5) @db.Decimal(12, 3) // FR-P-007 low-stock alert threshold
+  /**
+   * Increment the customer's stepper moves by: 1 for PIECE/PACK, 0.5 for loose KG.
+   */
+  stepQty       Decimal                  @default(1) @db.Decimal(12, 3)
+  minQty        Decimal                  @default(1) @db.Decimal(12, 3)
+  isAvailable   Boolean                  @default(true)
   imageUrl      String?
   blurhash      String? // ~30 bytes; images fade from blur, never pop in
   // FR-C-007 full-text search. GENERATED column + GIN index live in the
   // 1_product_search raw migration — Prisma can't express either natively.
   searchVector  Unsupported("tsvector")?
   deletedAt     DateTime?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdAt     DateTime                 @default(now())
+  updatedAt     DateTime                 @updatedAt
+  // Spec 2.1 standard columns
+  createdBy     String?
+  updatedBy     String?
+  recordStatus  RecordStatus             @default(ACTIVE)
+  versionNo     Int                      @default(0)
 
   store      Store       @relation(fields: [storeId], references: [id])
   category   Category    @relation(fields: [categoryId], references: [id])
@@ -374,7 +402,10 @@ model StockLedger {
   id          String      @id @default(uuid(7))
   productId   String
   storeId     String
-  delta       Int // +receive / −sell / ±adjust
+  // DECIMAL, not Int: selling 1.5 kg of atta must be recorded as 1.5. An Int
+  // here silently truncates the audit trail, so SUM(delta) stops reconciling
+  // with stockQty — the one thing this table exists to guarantee.
+  delta       Decimal     @db.Decimal(12, 3) // +receive / −sell / ±adjust
   reason      StockReason
   orderId     String?
   importJobId String?
@@ -403,10 +434,10 @@ model Cart {
 }
 
 model CartItem {
-  id        String @id @default(uuid(7))
+  id        String  @id @default(uuid(7))
   cartId    String
   productId String
-  qty       Int
+  qty       Decimal @db.Decimal(12, 3)
 
   cart    Cart    @relation(fields: [cartId], references: [id], onDelete: Cascade)
   product Product @relation(fields: [productId], references: [id])
@@ -474,17 +505,28 @@ model Order {
   cancelReason String?
   rejectReason String?
 
-  user        User                 @relation(fields: [userId], references: [id])
-  store       Store                @relation(fields: [storeId], references: [id])
-  address     Address              @relation(fields: [addressId], references: [id])
-  driver      Driver?              @relation(fields: [driverId], references: [id])
-  items       OrderItem[]
-  history     OrderStatusHistory[]
-  payments    Payment[]
-  refunds     Refund[]
-  codEntries  CodLedger[]
-  assignments DriverAssignment[]
-  rating      Rating?
+  /**
+   * Spec 2.1: optimistic locking. Two admins cannot silently overwrite.
+   */
+  versionNo              Int     @default(0)
+  cancelledBy            String?
+  cancellationReasonCode String?
+
+  user            User                 @relation(fields: [userId], references: [id])
+  store           Store                @relation(fields: [storeId], references: [id])
+  address         Address              @relation(fields: [addressId], references: [id])
+  /**
+   * Spec 5.3 — the address AS USED, frozen. See model OrderAddress.
+   */
+  addressSnapshot OrderAddress?
+  driver          Driver?              @relation(fields: [driverId], references: [id])
+  items           OrderItem[]
+  history         OrderStatusHistory[]
+  payments        Payment[]
+  refunds         Refund[]
+  codEntries      CodLedger[]
+  assignments     DriverAssignment[]
+  rating          Rating?
 
   @@index([storeId, fulfillmentStatus, placedAt(sort: Desc)]) // POS queue
   @@index([assignmentStatus, fulfillmentStatus, placedAt]) // admin dispatch board
@@ -495,7 +537,7 @@ model Order {
 
 // Full snapshot as of order time — prices change; a 3-month-old invoice must not.
 model OrderItem {
-  id               String @id @default(uuid(7))
+  id               String   @id @default(uuid(7))
   orderId          String
   productId        String // reference only — NEVER joined for display
   nameSnapshot     String
@@ -503,15 +545,54 @@ model OrderItem {
   packSizeSnapshot String
   pricePaise       Int
   mrpPaise         Int?
-  discountPaise    Int    @default(0)
-  taxBps           Int    @default(0)
-  qty              Int
+  discountPaise    Int      @default(0)
+  taxBps           Int      @default(0)
+  qty              Decimal  @db.Decimal(12, 3) // ordered quantity
+  /**
+   * Store-confirmed at picking; null until the store checks the shelf.
+   */
+  confirmedQty     Decimal? @db.Decimal(12, 3)
+  /**
+   * What actually went in the bag. Drives the final invoice, not `qty`.
+   */
+  fulfilledQty     Decimal? @db.Decimal(12, 3)
   lineTotalPaise   Int
 
   order   Order   @relation(fields: [orderId], references: [id])
   product Product @relation(fields: [productId], references: [id])
 
   @@index([orderId])
+}
+
+/**
+ * Spec 5.3 — the delivery address AS USED for this order, frozen at placement.
+ * Order.addressId still points at the live customer address (useful for
+ * "reorder to the same place"), but every DISPLAY, invoice and delivery
+ * record reads THIS table. Otherwise a customer editing their address
+ * silently rewrites where past orders were delivered.
+ */
+model OrderAddress {
+  id              String  @id @default(uuid(7))
+  orderId         String  @unique
+  sourceAddressId String?
+
+  recipientName   String?
+  recipientMobile String?
+  house           String
+  street          String
+  landmark        String?
+  locality        String?
+  city            String
+  district        String?
+  state           String?
+  pincode         String
+  lat             Float
+  lng             Float
+  instructions    String?
+
+  createdAt DateTime @default(now())
+
+  order Order @relation(fields: [orderId], references: [id])
 }
 
 // Append-only. FR-C-010 (customer timeline) and FR-A-003 (admin audit) read this.
@@ -548,8 +629,12 @@ model Driver {
   lastLng    Float?
   lastSeenAt DateTime?
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  createdBy    String?
+  updatedBy    String?
+  recordStatus RecordStatus @default(ACTIVE)
+  versionNo    Int          @default(0)
 
   orders      Order[]
   assignments DriverAssignment[]
@@ -689,17 +774,21 @@ model NotificationOutbox {
  * nobody remembered to switch it off.
  */
 model Banner {
-  id        String  @id @default(uuid(7))
-  storeId   String? // null = show in every store
-  title     String
-  subtitle  String?
-  imageUrl  String?
-  /** Solid/gradient fallback when there's no image — banners never render empty. */
-  bgColor   String  @default("#0B3D2E")
-  ctaLabel  String?
+  id       String  @id @default(uuid(7))
+  storeId  String? // null = show in every store
+  title    String
+  subtitle String?
+  imageUrl String?
+  /**
+   * Solid/gradient fallback when there's no image — banners never render empty.
+   */
+  bgColor  String  @default("#0B3D2E")
+  ctaLabel String?
 
   linkType  BannerLinkType @default(NONE)
-  /** categoryId, productId, or a search term — meaning depends on linkType. */
+  /**
+   * categoryId, productId, or a search term — meaning depends on linkType.
+   */
   linkValue String?
 
   sortOrder Int       @default(0)

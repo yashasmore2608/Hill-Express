@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 const DAY_MS = 86_400_000;
@@ -10,6 +11,9 @@ const cell = (v: unknown): string => {
 };
 const toCsv = (headers: string[], rows: unknown[][]): string =>
   [headers.join(','), ...rows.map((r) => r.map(cell).join(','))].join('\r\n');
+
+/** Prisma DECIMAL -> plain number. Quantities only; money stays integer paise. */
+const qty = (d: Prisma.Decimal | number): number => Number(d);
 
 const rupees = (paise: number) => (paise / 100).toFixed(2);
 const iso = (d: Date | null) => (d ? d.toISOString() : '');
@@ -57,7 +61,7 @@ export class ReportsService {
             o.driver?.name ?? '',
             `${o.address.street}, ${o.address.city}`,
             o.address.pincode,
-            o.items.reduce((n, i) => n + i.qty, 0),
+            o.items.reduce((n, i) => n + qty(i.qty), 0),
             rupees(o.itemTotalPaise),
             rupees(o.deliveryFeePaise),
             rupees(o.finalPaise),
@@ -121,10 +125,10 @@ export class ReportsService {
             p.packSize,
             rupees(p.pricePaise),
             p.mrpPaise ? rupees(p.mrpPaise) : '',
-            p.stockQty,
-            p.reservedQty,
-            Math.max(0, p.stockQty - p.reservedQty),
-            p.lowStockAt,
+            qty(p.stockQty),
+            qty(p.reservedQty),
+            qty(p.stockQty) - qty(p.reservedQty),
+            qty(p.lowStockAt),
             p.isAvailable ? 'yes' : 'no',
           ]),
         ),

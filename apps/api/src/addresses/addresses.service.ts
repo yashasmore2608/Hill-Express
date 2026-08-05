@@ -3,6 +3,7 @@ import type { Address } from '@prisma/client';
 import {
   LIMITS,
   type AddressDto,
+  type PatchAddressInput,
   type SaveAddressInput,
   type ServiceabilityDto,
 } from '@hillexpress/shared';
@@ -105,12 +106,15 @@ export class AddressesService {
     return this.toDto(created);
   }
 
-  async update(userId: string, id: string, input: SaveAddressInput): Promise<AddressDto> {
+  async update(userId: string, id: string, input: PatchAddressInput): Promise<AddressDto> {
     const db = this.prisma.db;
     const existing = await db.address.findFirst({ where: { id, userId, deletedAt: null } });
     if (!existing) throw new NotFoundException('Address not found');
 
-    const zoneId = await this.resolveZone(input.pincode);
+    // Re-resolve the zone only when the pincode is part of the edit — otherwise
+    // fixing a flat number would needlessly re-run serviceability.
+    const zoneId =
+      input.pincode !== undefined ? await this.resolveZone(input.pincode) : existing.zoneId;
     const updated = await db.address.update({ where: { id }, data: { ...input, zoneId } });
     return this.toDto(updated);
   }

@@ -10,6 +10,16 @@ import { isDbConfigured } from '../config/env';
  * Reports/exports will later use a second client pointed at a read replica;
  * today both point at the primary, switched by one env var.
  */
+/**
+ * Interactive-transaction budget. Prisma's 5 s default assumes a database on
+ * the same host; ours is Neon in ap-southeast-1, so a single round trip from
+ * an Indian client costs 150–400 ms and an order transition makes ~10 of them.
+ * The delivery transaction measured 5.6 s and aborted mid-write. 20 s leaves
+ * headroom on a bad link without letting a genuinely stuck transaction sit on
+ * row locks forever.
+ */
+export const TX = { maxWait: 10_000, timeout: 20_000 } as const;
+
 @Injectable()
 export class PrismaService implements OnModuleDestroy {
   private readonly client: PrismaClient | null = isDbConfigured ? new PrismaClient() : null;

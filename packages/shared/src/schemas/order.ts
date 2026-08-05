@@ -15,7 +15,8 @@ export const placeOrderSchema = z.object({
     .array(
       z.object({
         productId: idSchema,
-        qty: z.number().int().min(1).max(50),
+        /** DECIMAL(12,3) — 0.5 kg of tomatoes is a valid order line. */
+        qty: z.number().positive().max(50).multipleOf(0.001),
       }),
     )
     .min(1)

@@ -4,6 +4,17 @@ import type { AdminDispatchOrderDto, AdminDriverDto } from '@hillexpress/shared'
 import { PrismaService } from '../prisma/prisma.service';
 import { OrdersService } from '../orders/orders.service';
 
+/** Prisma DECIMAL -> plain number. Quantities only; money stays integer paise. */
+const qty = (d: Prisma.Decimal | number): number => Number(d);
+
+const FULFILLMENT_STATUSES = [
+  'PLACED', 'ACCEPTED', 'PACKING', 'READY_FOR_PICKUP', 'PICKED_UP',
+  'OUT_FOR_DELIVERY', 'DELIVERED', 'CANCELLED', 'REJECTED',
+] as const;
+type FulfillmentStatus = (typeof FULFILLMENT_STATUSES)[number];
+const isFulfillmentStatus = (s: string): s is FulfillmentStatus =>
+  (FULFILLMENT_STATUSES as readonly string[]).includes(s);
+
 @Injectable()
 export class AdminService {
   constructor(
@@ -33,7 +44,7 @@ export class AdminService {
       fulfillmentStatus: o.fulfillmentStatus,
       assignmentStatus: o.assignmentStatus,
       codDuePaise: o.codDuePaise,
-      itemCount: o.items.reduce((n, i) => n + i.qty, 0),
+      itemCount: o.items.reduce((n, i) => n + qty(i.qty), 0),
       placedAt: o.placedAt.toISOString(),
       storeName: o.store.name,
       addressArea: `${o.address.street}, ${o.address.city}`,
@@ -47,8 +58,10 @@ export class AdminService {
     const db = this.prisma.db;
     const limit = 30;
     const where: Prisma.OrderWhereInput = {
-      ...(q.status && q.status !== 'ALL'
-        ? { fulfillmentStatus: q.status as Prisma.OrderWhereInput['fulfillmentStatus'] }
+      // Unknown strings would reach Prisma as an enum value and throw a 500;
+      // an unrecognised filter should simply mean "no status filter".
+      ...(q.status && q.status !== 'ALL' && isFulfillmentStatus(q.status)
+        ? { fulfillmentStatus: q.status }
         : {}),
       ...(q.search
         ? {
@@ -81,7 +94,7 @@ export class AdminService {
         assignmentStatus: o.assignmentStatus,
         codDuePaise: o.codDuePaise,
         finalPaise: o.finalPaise,
-        itemCount: o.items.reduce((n, i) => n + i.qty, 0),
+        itemCount: o.items.reduce((n, i) => n + qty(i.qty), 0),
         placedAt: o.placedAt.toISOString(),
         deliveredAt: o.deliveredAt?.toISOString() ?? null,
         storeName: o.store.name,
@@ -108,7 +121,7 @@ export class AdminService {
       take: 300,
     });
     const mapped = rows.map((p) => {
-      const available = Math.max(0, p.stockQty - p.reservedQty);
+      const available = Math.max(0, qty(p.stockQty) - qty(p.reservedQty));
       return {
         id: p.id,
         sku: p.sku,
@@ -118,11 +131,11 @@ export class AdminService {
         packSize: p.packSize,
         pricePaise: p.pricePaise,
         mrpPaise: p.mrpPaise,
-        stockQty: p.stockQty,
-        reservedQty: p.reservedQty,
+        stockQty: qty(p.stockQty),
+        reservedQty: qty(p.reservedQty),
         availableQty: available,
-        lowStockAt: p.lowStockAt,
-        lowStock: available > 0 && available <= p.lowStockAt,
+        lowStockAt: qty(p.lowStockAt),
+        lowStock: available > 0 && available <= qty(p.lowStockAt),
         isAvailable: p.isAvailable,
       };
     });

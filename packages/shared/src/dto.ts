@@ -39,6 +39,10 @@ export interface ProductDto {
   availableQty: number;
   /** min(availableQty, per-order cap). The stepper's hard ceiling. */
   maxQty: number;
+  /** Increment the stepper moves by — 1 for packets, 0.5 for loose kg. */
+  stepQty: number;
+  /** Smallest sellable amount; going below it removes the line. */
+  minQty: number;
   lowStock: boolean;
   isAvailable: boolean;
   imageUrl: string | null;
@@ -60,6 +64,7 @@ export interface BillDto {
 
 export interface CartItemDto {
   productId: string;
+  /** DECIMAL(12,3) — fractional for loose goods. */
   qty: number;
   product: ProductDto;
 }
@@ -68,6 +73,23 @@ export interface CartDto {
   storeId: string;
   items: CartItemDto[];
   bill: BillDto;
+}
+
+/** Spec 5.3 — the address as used for an order, frozen at placement. */
+export interface OrderAddressDto {
+  recipientName: string | null;
+  recipientMobile: string | null;
+  house: string;
+  street: string;
+  landmark: string | null;
+  locality: string | null;
+  city: string;
+  district: string | null;
+  state: string | null;
+  pincode: string;
+  lat: number;
+  lng: number;
+  instructions: string | null;
 }
 
 export interface AddressDto {

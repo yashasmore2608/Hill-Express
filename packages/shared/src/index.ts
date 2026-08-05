@@ -6,6 +6,7 @@ export * from './domain/id';
 export * from './domain/order-status';
 export * from './domain/eta';
 export * from './domain/bill';
+export * from './domain/quantity';
 export * from './domain/cursor';
 export * from './schemas/common';
 export * from './schemas/auth';

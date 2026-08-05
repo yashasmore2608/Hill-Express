@@ -12,6 +12,9 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { toProductDto } from '../catalog/product.mapper';
 
+/** Prisma DECIMAL -> plain number. Quantities only; money stays integer paise. */
+const qty = (d: Prisma.Decimal | number): number => Number(d);
+
 @Injectable()
 export class PosService {
   constructor(private readonly prisma: PrismaService) {}
@@ -38,8 +41,8 @@ export class PosService {
       }),
     ]);
     const lowStockCount = lowRows.filter((p) => {
-      const avail = Math.max(0, p.stockQty - p.reservedQty);
-      return avail > 0 && avail <= p.lowStockAt;
+      const avail = Math.max(0, qty(p.stockQty) - qty(p.reservedQty));
+      return avail > 0 && avail <= qty(p.lowStockAt);
     }).length;
 
     return {
@@ -105,8 +108,8 @@ export class PosService {
     let page = rows.slice(0, q.limit);
     if (q.filter === 'low') {
       page = page.filter((p) => {
-        const avail = Math.max(0, p.stockQty - p.reservedQty);
-        return avail > 0 && avail <= p.lowStockAt;
+        const avail = Math.max(0, qty(p.stockQty) - qty(p.reservedQty));
+        return avail > 0 && avail <= qty(p.lowStockAt);
       });
     }
     const last = rows.slice(0, q.limit).at(-1);
@@ -148,13 +151,13 @@ export class PosService {
     });
     if (!product) throw new NotFoundException('Product not found');
 
-    const next = product.stockQty + input.delta;
+    const next = qty(product.stockQty) + input.delta;
     if (next < 0) {
-      throw new BadRequestException(`Only ${product.stockQty} in stock — cannot remove ${-input.delta}`);
+      throw new BadRequestException(`Only ${qty(product.stockQty)} in stock — cannot remove ${-input.delta}`);
     }
-    if (next < product.reservedQty) {
+    if (next < qty(product.reservedQty)) {
       throw new BadRequestException(
-        `${product.reservedQty} are reserved by live carts — stock cannot drop below that`,
+        `${qty(product.reservedQty)} are reserved by live carts — stock cannot drop below that`,
       );
     }
 

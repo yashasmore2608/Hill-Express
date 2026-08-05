@@ -12,7 +12,9 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   pincodeSchema,
+  patchAddressSchema,
   saveAddressSchema,
+  type PatchAddressInput,
   type SaveAddressInput,
 } from '@hillexpress/shared';
 import { ZodPipe } from '../common/zod.pipe';
@@ -69,7 +71,7 @@ export class AddressesController {
   update(
     @CurrentUser() user: JwtPayload,
     @Param('id') id: string,
-    @Body(new ZodPipe(saveAddressSchema)) dto: SaveAddressInput,
+    @Body(new ZodPipe(patchAddressSchema)) dto: PatchAddressInput,
   ) {
     return this.addresses.update(user.sub, id, dto);
   }

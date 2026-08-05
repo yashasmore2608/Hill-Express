@@ -4,7 +4,9 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import type { Order, OrderItem, OrderStatusHistory, Prisma } from '@prisma/client';
+// Prisma is a value import — Prisma.sql/Prisma.join build the batched stock UPDATEs.
+import { Prisma } from '@prisma/client';
+import type { Order, OrderAddress, OrderItem, OrderStatusHistory } from '@prisma/client';
 import {
   canTransitionAssignment,
   canTransitionFulfillment,
@@ -14,6 +16,7 @@ import {
   decodeCursor,
   encodeCursor,
   formatOrderNumber,
+  lineTotalPaise,
   HILL_DEFAULTS,
   type ActorType,
   type AssignmentStatus,
@@ -25,7 +28,7 @@ import {
   type PlaceOrderInput,
   type PosOrderDto,
 } from '@hillexpress/shared';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService, TX } from '../prisma/prisma.service';
 import { AddressesService } from '../addresses/addresses.service';
 import { otpFor } from '../config/secrets';
 
@@ -39,6 +42,9 @@ const ACTIVE_STATUSES: FulfillmentStatus[] = [
   'PICKED_UP',
   'OUT_FOR_DELIVERY',
 ];
+
+/** Prisma DECIMAL -> plain number for JSON. Quantities only; money is int. */
+const qty = (d: Prisma.Decimal | number): number => Number(d);
 
 @Injectable()
 export class OrdersService {
@@ -55,7 +61,7 @@ export class OrdersService {
     // no matter how many times the request lands.
     const existing = await db.order.findUnique({
       where: { idempotencyKey: input.idempotencyKey },
-      include: { items: true, history: true, address: true },
+      include: { items: true, history: true, address: true, addressSnapshot: true },
     });
     if (existing) {
       if (existing.userId !== userId) throw new ForbiddenException('Not your order');
@@ -157,11 +163,14 @@ export class OrdersService {
       // race-condition fix: two checkouts for the last packet cannot both
       // pass. 0 rows affected → sold out → whole transaction rolls back.
       for (const line of input.items) {
+        // Explicit ::decimal casts: the columns are DECIMAL(12,3) now, and a
+        // JS number binds as float8 — comparing float8 to numeric can round
+        // 0.1+0.2 into rejecting a line that is actually in stock.
         const affected = await tx.$executeRaw`
           UPDATE "Product"
-             SET "reservedQty" = "reservedQty" + ${line.qty}
+             SET "reservedQty" = "reservedQty" + ${line.qty}::decimal
            WHERE "id" = ${line.productId}
-             AND "stockQty" - "reservedQty" >= ${line.qty}`;
+             AND "stockQty" - "reservedQty" >= ${line.qty}::decimal`;
         if (affected === 0) {
           throw new BadRequestException(
             `"${byId.get(line.productId)!.name}" just sold out — remove it and try again`,
@@ -209,9 +218,29 @@ export class OrdersService {
                 pricePaise: p.pricePaise,
                 mrpPaise: p.mrpPaise,
                 qty: line.qty,
-                lineTotalPaise: p.pricePaise * line.qty,
+                // Same rounding function the app used to show the bill, so a
+                // fractional quantity can't make the two disagree by a paisa.
+                lineTotalPaise: lineTotalPaise(p.pricePaise, line.qty),
               };
             }),
+          },
+          // Spec 5.3: freeze the address AS USED. Order.addressId still points
+          // at the live row, but everything displayed reads this snapshot —
+          // editing an address must not rewrite where past orders went.
+          addressSnapshot: {
+            create: {
+              sourceAddressId: address.id,
+              recipientName: user.name,
+              recipientMobile: user.phone,
+              house: address.house,
+              street: address.street,
+              landmark: address.landmark,
+              city: address.city,
+              pincode: address.pincode,
+              lat: address.lat,
+              lng: address.lng,
+              instructions: address.instructions,
+            },
           },
           history: {
             create: { toStatus: 'PLACED', actorType: 'CUSTOMER', actorId: userId },
@@ -250,7 +279,7 @@ export class OrdersService {
       });
 
       return created;
-    });
+    }, TX);
 
     return this.toDetail(order, address, order.history);
   }
@@ -302,17 +331,22 @@ export class OrdersService {
 
       if (opts.releaseStock) {
         // Reject/cancel: hand the reservation back, ledgered.
-        for (const item of order.items) {
-          await tx.product.update({
-            where: { id: item.productId },
-            data: { reservedQty: { decrement: item.qty } },
-          });
-        }
+        // One statement, not one per line — inside a transaction each round
+        // trip to Neon is 150–400 ms and a 20-line order would blow the budget.
+        await tx.$executeRaw`
+          UPDATE "Product" AS p
+             SET "reservedQty" = p."reservedQty" - v.qty
+            FROM (VALUES ${Prisma.join(
+              order.items.map(
+                (i) => Prisma.sql`(${i.productId}::text, ${qty(i.qty)}::decimal)`,
+              ),
+            )}) AS v(id, qty)
+           WHERE p."id" = v.id`;
         await tx.stockLedger.createMany({
           data: order.items.map((item) => ({
             productId: item.productId,
             storeId: order.storeId,
-            delta: item.qty,
+            delta: qty(item.qty),
             reason: 'ORDER_RELEASE' as const,
             orderId,
             actorType: actor,
@@ -323,17 +357,21 @@ export class OrdersService {
 
       if (opts.sellStock) {
         // Pickup: reservation becomes a sale — both counters move, ledgered.
-        for (const item of order.items) {
-          await tx.product.update({
-            where: { id: item.productId },
-            data: { stockQty: { decrement: item.qty }, reservedQty: { decrement: item.qty } },
-          });
-        }
+        await tx.$executeRaw`
+          UPDATE "Product" AS p
+             SET "stockQty"    = p."stockQty"    - v.qty,
+                 "reservedQty" = p."reservedQty" - v.qty
+            FROM (VALUES ${Prisma.join(
+              order.items.map(
+                (i) => Prisma.sql`(${i.productId}::text, ${qty(i.qty)}::decimal)`,
+              ),
+            )}) AS v(id, qty)
+           WHERE p."id" = v.id`;
         await tx.stockLedger.createMany({
           data: order.items.map((item) => ({
             productId: item.productId,
             storeId: order.storeId,
-            delta: -item.qty,
+            delta: -qty(item.qty),
             reason: 'ORDER_SELL' as const,
             orderId,
             actorType: actor,
@@ -350,7 +388,7 @@ export class OrdersService {
           payload: { orderId, orderNumber: order.orderNumber, from, to },
         },
       });
-    });
+    }, TX);
   }
 
   cancelByCustomer(userId: string, orderId: string, reason: string) {
@@ -404,18 +442,33 @@ export class OrdersService {
       orderNumber: o.orderNumber,
       fulfillmentStatus: o.fulfillmentStatus,
       finalPaise: o.finalPaise,
-      itemCount: o.items.reduce((n, i) => n + i.qty, 0),
+      itemCount: o.items.reduce((n, i) => n + qty(i.qty), 0),
       placedAt: o.placedAt.toISOString(),
       etaLowMinutes: o.etaLowMinutes,
       etaHighMinutes: o.etaHighMinutes,
     };
   }
 
+  /**
+   * Spec 5.3: display reads the SNAPSHOT, never the live address row.
+   * `label` isn't snapshotted (it's a personal nickname, not part of the
+   * delivery record) so it falls back to the live row, then to a constant.
+   */
   private toDetail(
-    o: OrderWithItems,
+    o: OrderWithItems & { addressSnapshot?: OrderAddress | null },
     address: { label: string; house: string; street: string; city: string; pincode: string },
     history: OrderStatusHistory[],
   ): OrderDetailDto {
+    const snap = o.addressSnapshot;
+    const shown = snap
+      ? {
+          label: address?.label ?? 'Delivery address',
+          house: snap.house,
+          street: snap.street,
+          city: snap.city,
+          pincode: snap.pincode,
+        }
+      : address;
     return {
       ...this.toSummary(o),
       items: o.items.map((i) => ({
@@ -423,7 +476,7 @@ export class OrdersService {
         name: i.nameSnapshot,
         packSize: i.packSizeSnapshot,
         unit: i.unitSnapshot,
-        qty: i.qty,
+        qty: qty(i.qty),
         pricePaise: i.pricePaise,
         lineTotalPaise: i.lineTotalPaise,
       })),
@@ -432,11 +485,11 @@ export class OrdersService {
       codDuePaise: o.codDuePaise,
       paymentMethod: o.paymentMethod,
       address: {
-        label: address.label,
-        house: address.house,
-        street: address.street,
-        city: address.city,
-        pincode: address.pincode,
+        label: shown.label,
+        house: shown.house,
+        street: shown.street,
+        city: shown.city,
+        pincode: shown.pincode,
       },
       timeline: [...history]
         .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
@@ -490,7 +543,7 @@ export class OrdersService {
   async detailForCustomer(userId: string, orderId: string): Promise<OrderDetailDto> {
     const order = await this.prisma.db.order.findFirst({
       where: { id: orderId, userId },
-      include: { items: true, history: true, address: true },
+      include: { items: true, history: true, address: true, addressSnapshot: true },
     });
     if (!order) throw new NotFoundException('Order not found');
     return this.toDetail(order, order.address, order.history);
@@ -507,13 +560,13 @@ export class OrdersService {
       placedAt: o.placedAt.toISOString(),
       finalPaise: o.finalPaise,
       codDuePaise: o.codDuePaise,
-      itemCount: o.items.reduce((n, i) => n + i.qty, 0),
+      itemCount: o.items.reduce((n, i) => n + qty(i.qty), 0),
       items: o.items.map((i) => ({
         productId: i.productId,
         name: i.nameSnapshot,
         packSize: i.packSizeSnapshot,
         unit: i.unitSnapshot,
-        qty: i.qty,
+        qty: qty(i.qty),
         pricePaise: i.pricePaise,
         lineTotalPaise: i.lineTotalPaise,
       })),
@@ -601,7 +654,7 @@ export class OrdersService {
           payload: { orderId, orderNumber: order.orderNumber, driverId },
         },
       });
-    });
+    }, TX);
     return { ok: true as const };
   }
 
@@ -629,13 +682,13 @@ export class OrdersService {
       fulfillmentStatus: o.fulfillmentStatus,
       assignmentStatus: o.assignmentStatus,
       codDuePaise: o.codDuePaise,
-      itemCount: o.items.reduce((n, i) => n + i.qty, 0),
+      itemCount: o.items.reduce((n, i) => n + qty(i.qty), 0),
       items: o.items.map((i) => ({
         productId: i.productId,
         name: i.nameSnapshot,
         packSize: i.packSizeSnapshot,
         unit: i.unitSnapshot,
-        qty: i.qty,
+        qty: qty(i.qty),
         pricePaise: i.pricePaise,
         lineTotalPaise: i.lineTotalPaise,
       })),
