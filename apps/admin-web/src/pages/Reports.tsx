@@ -1,30 +1,38 @@
 import { useState } from 'react';
 import { downloadCsv } from '../lib/api';
 import { Button, Card, PageHeader } from '../components/ui';
+import {
+  IconDispatch,
+  IconInventory,
+  IconOrders,
+  IconReports,
+  IconSpinner,
+  IconWallet,
+} from '../components/icons';
 
 /** FR-A-007 — the reason Admin is a desktop surface. */
 const REPORTS = [
   {
     kind: 'orders',
-    icon: '🧾',
+    Icon: IconOrders,
     title: 'Daily orders',
     hint: 'Every order with status, timings, driver, money and actual-vs-promised delivery minutes.',
   },
   {
     kind: 'cod',
-    icon: '💰',
+    Icon: IconWallet,
     title: 'COD collection',
     hint: 'The cash ledger: every collection, deposit and shortfall, per driver.',
   },
   {
     kind: 'products',
-    icon: '📦',
+    Icon: IconInventory,
     title: 'Inventory snapshot',
     hint: 'Current stock, reserved and available quantities across all stores.',
   },
   {
     kind: 'drivers',
-    icon: '🛵',
+    Icon: IconDispatch,
     title: 'Driver summary',
     hint: 'Outstanding cash against limit, deliveries completed, last seen.',
   },
@@ -86,7 +94,15 @@ export default function Reports() {
       <div className="grid gap-4 md:grid-cols-2">
         {REPORTS.map((r) => (
           <Card key={r.kind} className="flex items-start gap-4">
-            <span className="text-2xl">{r.icon}</span>
+            <span
+              className="grid size-11 shrink-0 place-items-center rounded-[13px]"
+              style={{
+                background: 'color-mix(in srgb, var(--series-1) 12%, transparent)',
+                color: 'var(--series-1)',
+              }}
+            >
+              <r.Icon size={22} />
+            </span>
             <div className="flex flex-1 flex-col gap-3">
               <div>
                 <h2 className="font-semibold">{r.title}</h2>
@@ -98,7 +114,15 @@ export default function Reports() {
                 disabled={busy !== null}
                 className="self-start"
               >
-                {busy === r.kind ? 'Preparing…' : `↓ Download CSV`}
+                {busy === r.kind ? (
+                  <>
+                    <IconSpinner size={16} /> Preparing…
+                  </>
+                ) : (
+                  <>
+                    <IconReports size={16} /> Download CSV
+                  </>
+                )}
               </Button>
             </div>
           </Card>

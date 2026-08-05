@@ -5,6 +5,17 @@ import { api } from '../lib/api';
 import { count, rupees, rupeesShort, shortDate, statusLabel } from '../lib/format';
 import { BarList, ChartFrame, ColumnChart, StatusMix, TimeSeriesChart } from '../components/charts';
 import { Card, PageHeader, Segmented, Skeleton, StatTile } from '../components/ui';
+import {
+  IconAlert,
+  IconCheckCircle,
+  IconClock,
+  IconDispatch,
+  IconInventory,
+  IconOrders,
+  IconRupee,
+  IconTrend,
+  IconWallet,
+} from '../components/icons';
 
 const RANGES = [
   { days: 7, label: '7 days' },
@@ -55,44 +66,45 @@ export default function Dashboard() {
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatTile
           label="Revenue (delivered)"
-          icon="₹" index={0}
+          icon={IconRupee} index={0}
           value={rupees(k.revenuePaise)}
           deltaPct={k.revenueDeltaPct}
           hint="vs previous period"
         />
         <StatTile
           label="Orders"
-          icon="🧾" index={1}
+          icon={IconOrders} index={1}
           value={count(k.orders)}
           deltaPct={k.ordersDeltaPct}
           hint={`${k.deliveredCount} delivered`}
         />
         <StatTile label="Avg order value"
-          icon="📈" index={2} value={rupees(k.avgOrderValuePaise)} />
+          icon={IconTrend} index={2} value={rupees(k.avgOrderValuePaise)} />
         <StatTile
           label="Cash with drivers"
-          icon="💵" index={3}
+          icon={IconWallet} index={3}
           value={rupees(k.codOutstandingPaise)}
           tone="accent"
           hint="undeposited COD"
         />
         <StatTile
           label="Fulfilment rate"
-          icon="✅" index={4}
+          icon={IconCheckCircle} index={4}
           value={`${k.fulfilmentRatePct}%`}
           hint={`${k.cancelledCount} cancelled · ${k.rejectedCount} rejected`}
         />
         <StatTile
           label="Median delivery"
-          icon="⏱️" index={5}
+          icon={IconClock} index={5}
           value={k.medianDeliveryMinutes != null ? `${k.medianDeliveryMinutes} min` : '—'}
           hint={k.onTimePct != null ? `${k.onTimePct}% within promise` : 'no delivered orders yet'}
         />
         <StatTile label="Live orders"
-          icon="🛵" index={6} value={count(k.activeOrders)} hint="in flight now" />
+          icon={IconDispatch} index={6} value={count(k.activeOrders)} hint="in flight now" />
         <StatTile
           label="Stock alerts"
-          icon="📦" index={7}
+          icon={k.lowStockCount + k.outOfStockCount > 0 ? IconAlert : IconInventory}
+          index={7}
           value={count(k.lowStockCount + k.outOfStockCount)}
           tone={k.outOfStockCount > 0 ? 'critical' : k.lowStockCount > 0 ? 'warning' : 'default'}
           hint={`${k.lowStockCount} low · ${k.outOfStockCount} out`}

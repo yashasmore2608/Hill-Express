@@ -4,6 +4,7 @@ import type { AdminDispatchOrderDto, AdminDriverDto } from '@hillexpress/shared'
 import { ApiError, api } from '../lib/api';
 import { minutesAgo, rupees } from '../lib/format';
 import { Button, Card, EmptyState, PageHeader, Skeleton, StatusPill } from '../components/ui';
+import { ArtNoDispatch } from '../components/illustrations';
 
 /**
  * FR-A-003 dispatch board. Two panes side by side — orders awaiting a driver on
@@ -66,7 +67,11 @@ export default function Dispatch() {
             <Skeleton className="h-40" />
           ) : unassigned.length === 0 ? (
             <Card>
-              <EmptyState icon="✅" title="Everything is assigned" hint="New orders appear here automatically." />
+              <EmptyState
+                art={ArtNoDispatch}
+                title="Everything is assigned"
+                hint="New orders appear here automatically."
+              />
             </Card>
           ) : (
             unassigned.map((o) => {

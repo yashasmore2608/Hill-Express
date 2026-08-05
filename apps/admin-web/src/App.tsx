@@ -10,6 +10,19 @@ import {
 } from 'react-router-dom';
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { api, tokens } from './lib/api';
+import {
+  IconBanners,
+  IconDispatch,
+  IconInventory,
+  IconInvoices,
+  IconMoon,
+  IconMountain,
+  IconOrders,
+  IconOverview,
+  IconReports,
+  IconSignOut,
+  IconSun,
+} from './components/icons';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Dispatch from './pages/Dispatch';
@@ -24,13 +37,13 @@ const client = new QueryClient({
 });
 
 const NAV = [
-  { to: '/', label: 'Overview', icon: '📊', end: true },
-  { to: '/dispatch', label: 'Dispatch', icon: '🛵' },
-  { to: '/orders', label: 'Orders', icon: '🧾' },
-  { to: '/inventory', label: 'Inventory', icon: '📦' },
-  { to: '/banners', label: 'Banners', icon: '🎏' },
-  { to: '/invoices', label: 'Invoices', icon: '📑' },
-  { to: '/reports', label: 'Reports', icon: '📄' },
+  { to: '/', label: 'Overview', Icon: IconOverview, end: true },
+  { to: '/dispatch', label: 'Dispatch', Icon: IconDispatch },
+  { to: '/orders', label: 'Orders', Icon: IconOrders },
+  { to: '/inventory', label: 'Inventory', Icon: IconInventory },
+  { to: '/banners', label: 'Banners', Icon: IconBanners },
+  { to: '/invoices', label: 'Invoices', Icon: IconInvoices },
+  { to: '/reports', label: 'Reports', Icon: IconReports },
 ];
 
 /** Light/dark segmented switch — same control as the three mobile apps. */
@@ -60,7 +73,7 @@ function ThemeToggle() {
               : 'text-ink3 dark:text-ink3-dark'
           }`}
         >
-          <span aria-hidden>{m === 'light' ? '☀️' : '🌙'}</span>
+          {m === 'light' ? <IconSun size={14} /> : <IconMoon size={14} />}
           {m}
         </button>
       ))}
@@ -74,10 +87,10 @@ function Brand() {
     <div className="mb-6 flex items-center gap-3 px-1">
       <span
         aria-hidden
-        className="flex size-10 shrink-0 items-center justify-center rounded-[13px] text-lg shadow-e2"
+        className="flex size-10 shrink-0 items-center justify-center rounded-[13px] text-white shadow-e2"
         style={{ background: 'var(--brand-grad)' }}
       >
-        🏔️
+        <IconMountain size={22} />
       </span>
       <div className="leading-tight">
         <div className="brand-text text-[15px] font-extrabold tracking-tight">Hill Express</div>
@@ -141,9 +154,7 @@ function Shell() {
                   }`}
                   style={{ background: 'var(--series-1)' }}
                 />
-                <span aria-hidden className="text-base">
-                  {n.icon}
-                </span>
+                <n.Icon size={18} />
                 {n.label}
                 {n.to === '/dispatch' ? <DispatchBadge /> : null}
               </>
@@ -158,9 +169,10 @@ function Shell() {
               tokens.clear();
               navigate('/login', { replace: true });
             }}
-            className="rounded-[12px] px-3 py-2 text-left text-sm font-semibold text-ink3 transition hover:bg-surface2 dark:text-ink3-dark dark:hover:bg-surface2-dark"
+            className="flex items-center gap-2.5 rounded-[12px] px-3 py-2 text-left text-sm font-semibold text-ink3 transition hover:bg-surface2 dark:text-ink3-dark dark:hover:bg-surface2-dark"
           >
-            ↩ Sign out
+            <IconSignOut size={17} />
+            Sign out
           </button>
         </div>
       </aside>
@@ -181,7 +193,10 @@ function Shell() {
                 }`
               }
             >
-              {n.icon} {n.label}
+              <span className="inline-flex items-center gap-1.5">
+                <n.Icon size={15} />
+                {n.label}
+              </span>
             </NavLink>
           ))}
         </nav>

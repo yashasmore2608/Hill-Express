@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { rupees } from '../lib/format';
 import { Button, Card, EmptyState, PageHeader, Segmented, Skeleton, TableScroll } from '../components/ui';
+import { ArtNoInvoices } from '../components/illustrations';
 
 interface Row {
   id: string;
@@ -100,7 +101,7 @@ export default function Invoices() {
       ) : rows.length === 0 ? (
         <Card>
           <EmptyState
-            icon="🧾"
+            art={ArtNoInvoices}
             title="No invoices yet"
             hint="An invoice is issued the moment an order is delivered. Use Backfill for orders delivered earlier."
           />

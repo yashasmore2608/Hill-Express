@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ApiError, api, tokens } from '../lib/api';
 import { Button } from '../components/ui';
+import { IconMoon, IconMountain, IconSun } from '../components/icons';
 
 const setTheme = (m: 'light' | 'dark') => {
   document.documentElement.dataset.theme = m;
@@ -61,10 +62,10 @@ export default function Login() {
       >
         <div className="flex flex-col gap-2">
           <div
-            className="flex size-14 items-center justify-center rounded-[17px] text-2xl shadow-e2"
+            className="flex size-14 items-center justify-center rounded-[17px] text-white shadow-e2"
             style={{ background: 'var(--brand-grad)' }}
           >
-            🏔️
+            <IconMountain size={30} />
           </div>
           <h1 className="text-[26px] font-extrabold leading-tight tracking-tight">
             Hill Express <span className="brand-text">Admin</span>
@@ -118,9 +119,10 @@ export default function Login() {
               key={m}
               type="button"
               onClick={() => setTheme(m)}
-              className="rounded-full px-3 py-1.5 text-xs font-bold capitalize text-ink2 transition hover:bg-surface dark:text-ink2-dark dark:hover:bg-surface-dark"
+              className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold capitalize text-ink2 transition hover:bg-surface dark:text-ink2-dark dark:hover:bg-surface-dark"
             >
-              {m === 'light' ? '☀️' : '🌙'} {m}
+              {m === 'light' ? <IconSun size={13} /> : <IconMoon size={13} />}
+              {m}
             </button>
           ))}
         </div>

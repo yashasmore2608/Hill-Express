@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { tokens } from '../lib/api';
+import { IconSpinner, IconUpload } from './icons';
 
 const MAX_MB = 5;
 const ACCEPT = 'image/jpeg,image/png,image/webp';
@@ -118,8 +119,14 @@ export function ImageUpload({
             onClick={() => input.current?.click()}
             className="flex h-40 w-full flex-col items-center justify-center gap-1.5 px-4 text-center"
           >
-            <span aria-hidden className="text-3xl">
-              {busy ? '⏳' : '🖼️'}
+            <span
+              className="mb-1 grid size-12 place-items-center rounded-[14px]"
+              style={{
+                background: 'color-mix(in srgb, var(--series-1) 12%, transparent)',
+                color: 'var(--series-1)',
+              }}
+            >
+              {busy ? <IconSpinner size={24} /> : <IconUpload size={24} />}
             </span>
             <span className="text-sm font-bold">
               {busy ? 'Uploading…' : 'Drop an image, or click to browse'}

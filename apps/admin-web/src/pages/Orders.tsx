@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { dateTime, rupees } from '../lib/format';
 import { EmptyState, PageHeader, Skeleton, StatusPill, TableScroll } from '../components/ui';
+import { ArtNoOrders } from '../components/illustrations';
 
 interface Row {
   id: string;
@@ -77,7 +78,7 @@ export default function Orders() {
       {isPending ? (
         <Skeleton className="h-72" />
       ) : (data?.items ?? []).length === 0 ? (
-        <EmptyState icon="🧾" title="No orders match" hint="Try a different status or search." />
+        <EmptyState art={ArtNoOrders} title="No orders match" hint="Try a different status or search." />
       ) : (
         <TableScroll>
           <table className="w-full min-w-[900px] text-sm">

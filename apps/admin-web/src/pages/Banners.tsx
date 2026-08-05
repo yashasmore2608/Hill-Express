@@ -4,6 +4,8 @@ import type { AdminBannerDto, CategoryDto, StoreSummaryDto } from '@hillexpress/
 import { ApiError, api } from '../lib/api';
 import { ImageUpload } from '../components/image-upload';
 import { Button, Card, EmptyState, PageHeader, Skeleton } from '../components/ui';
+import { ArtNoBanners } from '../components/illustrations';
+import { IconImage } from '../components/icons';
 
 type Draft = {
   title: string;
@@ -385,7 +387,7 @@ export default function Banners() {
       ) : (banners.data ?? []).length === 0 ? (
         <Card>
           <EmptyState
-            icon="🎏"
+            art={ArtNoBanners}
             title="No banners yet"
             hint="Upload artwork and it appears at the top of the customer home screen within seconds."
           />
@@ -424,7 +426,9 @@ export default function Banners() {
                     {b.liveNow ? '● Live now' : b.isActive ? 'Scheduled' : 'Off'}
                   </span>
                   {b.imageUrl ? (
-                    <span className="text-xs text-ink3 dark:text-ink3-dark">🖼️ image</span>
+                    <span className="inline-flex items-center gap-1 text-xs text-ink3 dark:text-ink3-dark">
+                      <IconImage size={13} /> image
+                    </span>
                   ) : null}
                   <span className="text-xs text-ink3 dark:text-ink3-dark">#{b.sortOrder}</span>
                   {b.endsAt ? (

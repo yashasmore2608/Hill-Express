@@ -3,6 +3,8 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { rupees } from '../lib/format';
 import { EmptyState, PageHeader, Skeleton, TableScroll } from '../components/ui';
+import { ArtEmptyBox } from '../components/illustrations';
+import { IconCheck } from '../components/icons';
 
 interface Row {
   id: string;
@@ -77,7 +79,7 @@ export default function Inventory() {
       {isPending ? (
         <Skeleton className="h-72" />
       ) : (data ?? []).length === 0 ? (
-        <EmptyState icon="📦" title="Nothing matches" hint="Try a different filter or search." />
+        <EmptyState art={ArtEmptyBox} title="Nothing matches" hint="Try a different filter or search." />
       ) : (
         <TableScroll>
           <table className="w-full min-w-[820px] text-sm">
@@ -127,7 +129,7 @@ export default function Inventory() {
                       </span>
                     ) : (
                       <span className="rounded-full bg-moss-soft px-2.5 py-1 text-[11px] font-semibold uppercase text-ok dark:bg-moss-soft-dark dark:text-ok-dark">
-                        ✓ In stock
+                        <IconCheck size={12} /> In stock
                       </span>
                     )}
                   </td>

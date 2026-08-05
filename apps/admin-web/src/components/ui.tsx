@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { ComponentType, ReactNode } from 'react';
 import { statusLabel, statusTone } from '../lib/format';
 
 /**
@@ -81,7 +81,7 @@ export function StatTile({
   value,
   deltaPct,
   hint,
-  icon,
+  icon: Icon,
   tone = 'default',
   index = 0,
 }: {
@@ -89,7 +89,8 @@ export function StatTile({
   value: string;
   deltaPct?: number | null;
   hint?: string;
-  icon?: string;
+  /** An icon component from components/icons — tinted to the tile's tone. */
+  icon?: ComponentType<{ size?: number }>;
   tone?: 'default' | 'accent' | 'warning' | 'critical';
   /** Position in the grid — drives the entrance stagger only. */
   index?: number;
@@ -126,9 +127,12 @@ export function StatTile({
         <span className="text-[11px] font-bold uppercase tracking-[0.1em] text-ink3 dark:text-ink3-dark">
           {label}
         </span>
-        {icon ? (
-          <span aria-hidden className="text-base opacity-70">
-            {icon}
+        {Icon ? (
+          <span
+            className="grid size-8 shrink-0 place-items-center rounded-[10px]"
+            style={{ background: `color-mix(in srgb, ${rail} 12%, transparent)`, color: rail }}
+          >
+            <Icon size={17} />
           </span>
         ) : null}
       </div>
@@ -271,17 +275,28 @@ export function Skeleton({ className = '' }: { className?: string }) {
   );
 }
 
-export function EmptyState({ icon, title, hint }: { icon: string; title: string; hint?: string }) {
+/**
+ * Empty state. `art` takes an illustration component from
+ * components/illustrations, not a glyph — see the note at the top of that file
+ * for why a scaled-up icon is the wrong thing here.
+ */
+export function EmptyState({
+  art: Art,
+  title,
+  hint,
+  action,
+}: {
+  art: ComponentType<{ size?: number; className?: string }>;
+  title: string;
+  hint?: string;
+  action?: ReactNode;
+}) {
   return (
-    <div className="flex flex-col items-center gap-2 px-6 py-16 text-center">
-      <span
-        aria-hidden
-        className="mb-1 flex size-14 items-center justify-center rounded-2xl bg-surface2 text-3xl dark:bg-surface2-dark"
-      >
-        {icon}
-      </span>
-      <p className="font-bold">{title}</p>
+    <div className="flex flex-col items-center gap-3 px-6 py-14 text-center">
+      <Art size={172} className="mb-1" />
+      <p className="text-[15px] font-bold">{title}</p>
       {hint ? <p className="max-w-sm text-sm text-ink3 dark:text-ink3-dark">{hint}</p> : null}
+      {action ? <div className="mt-2">{action}</div> : null}
     </div>
   );
 }
