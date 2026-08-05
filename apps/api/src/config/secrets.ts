@@ -20,6 +20,38 @@ export const otpFor = (orderId: string, purpose: 'PICKUP' | 'DELIVERY'): string 
   return String((digest.readUInt32BE(0) % 9000) + 1000);
 };
 
+/**
+ * Short-lived signed link for one invoice PDF.
+ *
+ * A mobile app cannot put an Authorization header on a URL it hands to the
+ * OS browser or a share sheet, and the alternative — pulling in native
+ * file-system and sharing modules purely to attach one header — is a lot of
+ * moving parts for a download button. So the link carries its own proof:
+ * HMAC over (invoiceId, expiry), valid for 15 minutes.
+ *
+ * The signature covers the expiry, so a link cannot be extended by editing
+ * the query string, and comparison is constant-time.
+ */
+export const INVOICE_LINK_TTL_MS = 15 * 60_000;
+
+export const signInvoiceLink = (invoiceId: string, expiresAt: number): string =>
+  createHmac('sha256', accessSecret)
+    .update(`invoice:${invoiceId}:${expiresAt}`)
+    .digest('base64url');
+
+export const verifyInvoiceLink = (
+  invoiceId: string,
+  expiresAt: number,
+  signature: string,
+): boolean => {
+  if (!Number.isFinite(expiresAt) || expiresAt < Date.now()) return false;
+  const expected = Buffer.from(signInvoiceLink(invoiceId, expiresAt));
+  const given = Buffer.from(signature);
+  // timingSafeEqual throws on length mismatch — check first, and note that
+  // leaking the LENGTH of a base64url HMAC tells an attacker nothing.
+  return expected.length === given.length && timingSafeEqual(expected, given);
+};
+
 // ── Password hashing (admin accounts) — scrypt, no external deps ──
 
 export const hashPassword = (password: string): string => {

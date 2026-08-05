@@ -16,6 +16,7 @@ import Dispatch from './pages/Dispatch';
 import Orders from './pages/Orders';
 import Inventory from './pages/Inventory';
 import Banners from './pages/Banners';
+import Invoices from './pages/Invoices';
 import Reports from './pages/Reports';
 
 const client = new QueryClient({
@@ -28,6 +29,7 @@ const NAV = [
   { to: '/orders', label: 'Orders', icon: '🧾' },
   { to: '/inventory', label: 'Inventory', icon: '📦' },
   { to: '/banners', label: 'Banners', icon: '🎏' },
+  { to: '/invoices', label: 'Invoices', icon: '📑' },
   { to: '/reports', label: 'Reports', icon: '📄' },
 ];
 
@@ -191,6 +193,7 @@ function Shell() {
             <Route path="/orders" element={<Orders />} />
             <Route path="/inventory" element={<Inventory />} />
             <Route path="/banners" element={<Banners />} />
+            <Route path="/invoices" element={<Invoices />} />
             <Route path="/reports" element={<Reports />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

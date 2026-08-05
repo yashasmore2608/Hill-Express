@@ -2,7 +2,8 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tansta
 import * as Crypto from 'expo-crypto';
 import { useRef } from 'react';
 import type { OrderDetailDto, OrderPageDto } from '@hillexpress/shared';
-import { apiFetch } from './api';
+import * as Linking from 'expo-linking';
+import { API_BASE, apiFetch } from './api';
 import { useAuth } from './auth';
 import { useCartStore } from './cart';
 
@@ -30,6 +31,29 @@ export function useOrder(id: string | undefined) {
     enabled: status === 'signedIn' && Boolean(id),
     // Live orders poll until sockets land (M11); settled orders stop.
     refetchInterval: (q) => (q.state.data && ACTIVE.has(q.state.data.fulfillmentStatus) ? 10_000 : false),
+  });
+}
+
+/**
+ * Open the tax invoice for a delivered order.
+ *
+ * The API mints a 15-minute signed URL rather than requiring a header, so the
+ * PDF can be handed straight to the system browser — no file-system or
+ * sharing native module needed just to attach an Authorization header.
+ */
+export function useOpenInvoice() {
+  const { accessToken } = useAuth();
+  return useMutation({
+    mutationFn: async (orderId: string) => {
+      const invoice = await apiFetch<{ id: string }>(`/invoices/order/${orderId}`, {
+        token: accessToken,
+      });
+      const { url } = await apiFetch<{ url: string; invoiceNo: string }>(
+        `/invoices/${invoice.id}/link`,
+        { token: accessToken },
+      );
+      await Linking.openURL(`${API_BASE}${url}`);
+    },
   });
 }
 

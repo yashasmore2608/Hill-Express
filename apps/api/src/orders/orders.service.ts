@@ -30,6 +30,7 @@ import {
 } from '@hillexpress/shared';
 import { PrismaService, TX } from '../prisma/prisma.service';
 import { AddressesService } from '../addresses/addresses.service';
+import { InvoicesService } from '../invoices/invoices.service';
 import { otpFor } from '../config/secrets';
 
 type OrderWithItems = Order & { items: OrderItem[] };
@@ -51,6 +52,7 @@ export class OrdersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly addresses: AddressesService,
+    private readonly invoices: InvoicesService,
   ) {}
 
   // ═══════════════════════ PLACE (customer) ═══════════════════════
@@ -813,6 +815,15 @@ export class OrdersService {
         }
       },
     });
+
+    // Stage 14. Deliberately AFTER the transaction commits, not inside it:
+    // the delivery is what the driver is waiting on, and rendering a PDF is
+    // not a reason to hold row locks or risk the whole handover failing.
+    // `backfill()` re-issues anything that slips through here.
+    await this.invoices.issueForOrder(orderId, driverId).catch(() => {
+      /* logged by InvoicesService; delivery already succeeded */
+    });
+
     return { ok: true as const };
   }
 

@@ -22,6 +22,15 @@ async function bootstrap() {
   // in the database must keep working when the API moves to /v2.
   const uploadRoot = resolve(process.cwd(), env.UPLOAD_DIR);
   mkdirSync(uploadRoot, { recursive: true });
+
+  // Invoices live under the same root for one backup/volume story, but they
+  // carry the customer's name, phone and delivery address. An unguessable
+  // filename is not authorisation, so this subtree is never served statically —
+  // GET /v1/invoices/:id/document checks ownership and streams it instead.
+  app.use('/uploads/invoices', (_req: express.Request, res: express.Response) => {
+    res.status(404).json({ statusCode: 404, message: 'Not found' });
+  });
+
   app.use(
     '/uploads',
     express.static(uploadRoot, {

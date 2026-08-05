@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { formatINR, formatQty, paise } from '@hillexpress/shared';
 import { AppText, Button, Card, Price, Screen, StatusPill, useTheme } from '@hillexpress/ui';
 import { useAuth } from '../../lib/auth';
-import { useCancelOrder, useOrder } from '../../lib/orders';
+import { useCancelOrder, useOpenInvoice, useOrder } from '../../lib/orders';
 import { OrderRail } from '../../components/order-rail';
 import { ListSkeleton } from '../../components/skeletons';
 import { Redirect } from 'expo-router';
@@ -18,6 +18,7 @@ export default function OrderDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { data: order, isPending } = useOrder(id);
   const cancel = useCancelOrder();
+  const invoice = useOpenInvoice();
 
   if (status === 'signedOut') return <Redirect href="/(auth)/sign-in" />;
 
@@ -136,6 +137,23 @@ export default function OrderDetail() {
               {order.address.pincode}
             </AppText>
           </Card>
+
+          {/* Stage 14: the invoice exists the moment the order is delivered. */}
+          {order.fulfillmentStatus === 'DELIVERED' ? (
+            <>
+              <Button
+                label={invoice.isPending ? t('orders.invoiceOpening') : t('orders.invoice')}
+                variant="secondary"
+                disabled={invoice.isPending}
+                onPress={() => invoice.mutate(order.id)}
+              />
+              {invoice.isError ? (
+                <AppText token="caption" color="critical" style={{ textAlign: 'center' }}>
+                  {t('orders.invoiceFailed')}
+                </AppText>
+              ) : null}
+            </>
+          ) : null}
 
           {order.cancellable ? (
             <Button

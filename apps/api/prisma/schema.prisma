@@ -206,6 +206,7 @@ model User {
   orders    Order[]
   carts     Cart[]
   ratings   Rating[]
+  invoices  Invoice[]
 
   @@index([status, createdAt(sort: Desc)])
 }
@@ -331,6 +332,7 @@ model Store {
   products   Product[]
   orders     Order[]
   banners    Banner[]
+  invoices   Invoice[]
 
   @@index([zoneId, isOpen, isBlocked])
 }
@@ -519,6 +521,7 @@ model Order {
    * Spec 5.3 — the address AS USED, frozen. See model OrderAddress.
    */
   addressSnapshot OrderAddress?
+  invoice         Invoice?
   driver          Driver?              @relation(fields: [driverId], references: [id])
   items           OrderItem[]
   history         OrderStatusHistory[]
@@ -558,8 +561,9 @@ model OrderItem {
   fulfilledQty     Decimal? @db.Decimal(12, 3)
   lineTotalPaise   Int
 
-  order   Order   @relation(fields: [orderId], references: [id])
-  product Product @relation(fields: [productId], references: [id])
+  order        Order         @relation(fields: [orderId], references: [id])
+  product      Product       @relation(fields: [productId], references: [id])
+  invoiceItems InvoiceItem[]
 
   @@index([orderId])
 }
@@ -850,4 +854,112 @@ model AuditLog {
 
   @@index([entity, entityId, createdAt(sort: Desc)])
   @@index([actorType, actorId, createdAt(sort: Desc)])
+}
+
+// ─────────────────────────── INVOICING (spec §11) ───────────────────────────
+
+enum InvoiceType {
+  TAX_INVOICE
+  CREDIT_NOTE
+}
+
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+  CANCELLED
+}
+
+enum InvoicePaymentStatus {
+  UNPAID
+  PARTIAL
+  PAID
+}
+
+/**
+ * Invoice serial, per Indian financial year (1 April – 31 March).
+ *
+ * GST rule 46(b) requires a consecutive serial number unique within a
+ * financial year — NOT per day like the order number. Resetting on the wrong
+ * boundary, or leaving gaps, is the kind of thing that fails an audit years
+ * later, so the counter lives in its own row and only moves inside the
+ * invoice transaction.
+ */
+model InvoiceSeq {
+  fy  String @id // "2026-27"
+  seq Int    @default(0)
+}
+
+model Invoice {
+  id        String @id @default(uuid(7))
+  invoiceNo String @unique // HE/2026-27/000001
+  /**
+   * One invoice per order. The unique constraint IS the idempotency guard:
+   * a retried issue-invoice call cannot produce a second serial for the
+   * same order, which would be a real compliance problem.
+   */
+  orderId    String        @unique
+  storeId    String
+  userId     String
+  type       InvoiceType   @default(TAX_INVOICE)
+  status     InvoiceStatus @default(ISSUED)
+
+  // Money stays integer paise everywhere, as it does across the codebase.
+  // The spec's DECIMAL(12,2) is satisfied on presentation, not in storage —
+  // floating money is how rounding drift gets into a ledger.
+  subtotalPaise    Int
+  discountPaise    Int @default(0)
+  taxPaise         Int @default(0)
+  deliveryFeePaise Int @default(0)
+  totalPaise       Int
+
+  paymentStatus InvoicePaymentStatus @default(UNPAID)
+  paidPaise     Int                  @default(0)
+
+  /** Relative path to the rendered PDF, e.g. /uploads/invoices/x.pdf */
+  documentUrl String?
+
+  invoiceDate DateTime  @default(now())
+  issuedAt    DateTime?
+  cancelledAt DateTime?
+
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  createdBy    String?
+  updatedBy    String?
+  recordStatus RecordStatus @default(ACTIVE)
+  versionNo    Int          @default(0)
+
+  order Order         @relation(fields: [orderId], references: [id])
+  store Store         @relation(fields: [storeId], references: [id])
+  user  User          @relation(fields: [userId], references: [id])
+  items InvoiceItem[]
+
+  @@index([storeId, invoiceDate(sort: Desc)])
+  @@index([userId, invoiceDate(sort: Desc)])
+  @@index([paymentStatus])
+}
+
+model InvoiceItem {
+  id          String @id @default(uuid(7))
+  invoiceId   String
+  orderItemId String
+
+  // Snapshots again: an invoice is a legal record and must never change
+  // because someone renamed a product afterwards.
+  nameSnapshot String
+  skuSnapshot  String?
+  unitSnapshot Unit
+
+  /** What was actually delivered — fulfilled qty when the store recorded it. */
+  qty            Decimal @db.Decimal(12, 3)
+  unitPricePaise Int
+  discountPaise  Int     @default(0)
+  taxBps         Int     @default(0)
+  taxPaise       Int     @default(0)
+  lineTotalPaise Int
+
+  invoice   Invoice   @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  orderItem OrderItem @relation(fields: [orderItemId], references: [id])
+
+  @@index([invoiceId])
 }
