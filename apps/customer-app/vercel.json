@@ -1,0 +1,22 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "installCommand": "cd ../.. && pnpm install --frozen-lockfile --filter customer-app... --config.virtual-store-dir=node_modules/.pnpm",
+  "buildCommand": "npx expo export --platform web",
+  "outputDirectory": "dist",
+  "cleanUrls": true,
+  "rewrites": [
+    { "source": "/product/:id", "destination": "/product/[id].html" },
+    { "source": "/category/:id", "destination": "/category/[id].html" },
+    { "source": "/orders/:id", "destination": "/orders/[id].html" },
+    { "source": "/address/:id", "destination": "/address/[id].html" }
+  ],
+  "headers": [
+    {
+      "source": "/_expo/static/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+      ]
+    }
+  ]
+}

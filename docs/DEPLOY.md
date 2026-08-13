@@ -8,7 +8,8 @@ loads and then fails every request.
 |---|---|---|
 | `apps/admin-web` | **Vercel** | Static React/Vite bundle + service worker |
 | `apps/api` | **Render** | Long-running NestJS process, writes files to disk |
-| `apps/customer-app`, `driver-app`, `pos-app` | **Not web** | Expo/React Native — these ship as APKs via EAS Build, Vercel cannot host them |
+| `apps/customer-app` | **Vercel** (demo) / **EAS** (real) | Expo static web export for a shareable link; APK via EAS for the actual product — see §4 |
+| `apps/driver-app`, `pos-app` | **EAS Build** | Expo/React Native — ship as APKs, Vercel cannot host them |
 
 Order matters: **Render first**, because Vercel needs the API's URL.
 
@@ -120,6 +121,53 @@ this genuinely has to be the literal hostname.
   service worker would pin users to a stale build.
 
 ---
+
+## 4 · Customer app
+
+### As a web link (client demos)
+
+`apps/customer-app/vercel.json` drives this — a **second Vercel project**, with
+Root Directory set to `apps/customer-app`. Two projects cannot share the root
+`vercel.json`, which is why this one carries its own and reaches back up with
+`cd ../..` for the install. That requires *"Include source files outside of the
+Root Directory"*, which Vercel enables by default for monorepos.
+
+Set one environment variable: **`EXPO_PUBLIC_API_URL`** = the Render URL.
+[api.ts](../apps/customer-app/src/lib/api.ts) reads it directly and `assetUrl()`
+builds absolute image URLs from it, so this app needs no proxy rewrites — unlike
+the admin panel. It is inlined at build time, so changing it means redeploying.
+
+The rewrites exist because `expo export` emits dynamic routes as literal
+`[id].html` files. Vercel will not map `/product/123` onto those by itself.
+
+Caveat: the export is a 2.7 MB JS bundle. Acceptable for a demo over wifi, not
+what you want to serve customers on a hill-town mobile network.
+
+### As an APK (the real product)
+
+```powershell
+npm i -g eas-cli
+eas login
+cd apps/customer-app
+eas build:configure
+eas build -p android --profile preview   # preview = APK; production = AAB
+```
+
+EAS returns a download link. This sidesteps the Expo Go SDK mismatch entirely —
+the client installs a real app. `EXPO_PUBLIC_API_URL` goes in `eas.json` for the
+profile and is compiled in, so the API must be live before you build.
+
+### OTP will block any demo unless you change one thing
+
+There is no real SMS provider — [auth.module.ts](../apps/api/src/auth/auth.module.ts)
+wires `ConsoleSmsProvider` and the Msg91 swap is commented out. And
+[auth.service.ts](../apps/api/src/auth/auth.service.ts) only returns `devOtp` in
+the response when `NODE_ENV === 'development'`.
+
+So under `NODE_ENV=production` no SMS is sent **and** the code is not returned:
+nobody can sign in. For a demo, set `NODE_ENV=development` on the Render service
+and treat the URL as private — that flag turns the deployment into a free pass
+into any account. The admin panel is unaffected; it uses email/password.
 
 ## Known gaps
 
