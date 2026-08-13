@@ -98,11 +98,17 @@ this genuinely has to be the literal hostname.
 
 ### What `vercel.json` is doing
 
-- **installCommand** — the repo's `.npmrc` pins `virtual-store-dir` to
-  `C:\pnpm\hill-express`, a Windows path that keeps pnpm's store out of
-  OneDrive. On Vercel's Linux builders that path is meaningless, so
-  `--config.virtual-store-dir=node_modules/.pnpm` overrides it back to the
-  default. Leave the `.npmrc` alone — local dev still needs it.
+- **installCommand** — two overrides, both load-bearing:
+  - `--filter @hillexpress/admin-web...` restricts the install to the admin
+    panel and its workspace dependencies — 2 of 8 projects, 420 packages
+    instead of 1150. Without it pnpm installs Expo and React Native for all
+    three mobile apps to build a Vite bundle that uses none of them. The
+    trailing `...` is pnpm syntax for "and its dependencies"; it is what pulls
+    in `@hillexpress/shared`, so do not drop it.
+  - `--config.virtual-store-dir=node_modules/.pnpm` undoes the repo `.npmrc`,
+    which pins the store to `C:\pnpm\hill-express` to keep pnpm out of
+    OneDrive. That path is meaningless on Vercel's Linux builders. Leave the
+    `.npmrc` alone — local dev still needs it.
 - **buildCommand** — builds `@hillexpress/shared` first. `admin-web`'s build
   starts with `tsc --noEmit`, which resolves `@hillexpress/shared` through its
   compiled `dist/index.d.ts`; without that step the typecheck fails.

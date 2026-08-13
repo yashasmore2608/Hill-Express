@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
-  "installCommand": "pnpm install --frozen-lockfile --config.virtual-store-dir=node_modules/.pnpm",
+  "installCommand": "pnpm install --frozen-lockfile --filter @hillexpress/admin-web... --config.virtual-store-dir=node_modules/.pnpm",
   "buildCommand": "pnpm --filter @hillexpress/shared build && pnpm --filter @hillexpress/admin-web build",
   "outputDirectory": "apps/admin-web/dist",
   "rewrites": [
