@@ -1,0 +1,51 @@
+# Render blueprint for the Hill Express API.
+#
+# The admin PWA on Vercel is a static bundle that calls /v1 and /uploads on its
+# own origin (see vercel.json rewrites) — this service is what those rewrites
+# point at. Deploy this FIRST, then paste its URL into vercel.json.
+#
+# Apply with: Render dashboard → New → Blueprint → pick this repo.
+
+services:
+  - type: web
+    name: hill-express-api
+    runtime: node
+    plan: free
+    region: singapore # closest to India — keeps Neon round-trips short
+    branch: main
+    healthCheckPath: /v1/health
+
+    # Migrations run at BUILD time, not start time: a failed migration should
+    # fail the deploy before Render switches traffic to the new instance.
+    buildCommand: >-
+      corepack enable &&
+      pnpm install --frozen-lockfile --config.virtual-store-dir=node_modules/.pnpm &&
+      pnpm --filter @hillexpress/shared build &&
+      pnpm --filter @hillexpress/api exec prisma generate &&
+      pnpm --filter @hillexpress/api exec prisma migrate deploy &&
+      pnpm --filter @hillexpress/api build
+
+    # Runs with cwd = apps/api, so a relative UPLOAD_DIR lands inside the package.
+    startCommand: pnpm --filter @hillexpress/api start
+
+    envVars:
+      - key: NODE_ENV
+        value: production
+
+      # Neon pooled connection string — runtime queries.
+      - key: DATABASE_URL
+        sync: false
+      # Neon DIRECT (non-pooler) string — prisma migrate needs session mode.
+      - key: DIRECT_URL
+        sync: false
+
+      # Both must be >= 32 chars or the app exits at boot (zod validation).
+      # Generate: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+      - key: JWT_ACCESS_SECRET
+        sync: false
+      - key: JWT_REFRESH_SECRET
+        sync: false
+
+      # SERVICE_ALL_PINCODES is deliberately ABSENT. It makes every pincode
+      # serviceable, which in production would let anyone in the country order.
+      # Do not add it here.
