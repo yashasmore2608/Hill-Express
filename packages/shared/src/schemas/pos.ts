@@ -15,14 +15,62 @@ export const patchProductSchema = z.object({
   lowStockAt: z.number().int().min(0).max(1000).optional(),
 });
 
-/** FR-P-007: stock moves are LEDGER ENTRIES, never direct writes. */
-export const stockAdjustSchema = z.object({
-  delta: z
-    .number()
-    .int()
-    .refine((v) => v !== 0, 'Delta cannot be zero')
-    .refine((v) => Math.abs(v) <= 10_000, 'Delta too large'),
-  note: z.string().max(200).optional(),
+/**
+ * FR-P-007: stock moves are LEDGER ENTRIES, never direct writes.
+ *
+ * Two ways to say it, because an operator means two different things:
+ *
+ *   delta  — "three more came in", "two were damaged". A movement.
+ *   setTo  — "I counted the shelf and there are 47". A recount.
+ *
+ * `setTo` is resolved to a delta ON THE SERVER and cannot be done by the
+ * client: the POS only ever receives `availableQty` (stock − reserved), so a
+ * shelf count of 47 against a displayed 44 would write the wrong movement
+ * whenever a live cart holds stock. The ledger still records a delta either
+ * way — nothing here writes a balance directly.
+ */
+export const stockAdjustSchema = z
+  .object({
+    delta: z
+      .number()
+      .int()
+      .refine((v) => v !== 0, 'Delta cannot be zero')
+      .refine((v) => Math.abs(v) <= 10_000, 'Delta too large')
+      .optional(),
+    /** Counted shelf quantity. A count equal to current stock is a no-op. */
+    setTo: z.number().int().min(0).max(100_000).optional(),
+    note: z.string().max(200).optional(),
+  })
+  .refine(
+    (v) => (v.delta === undefined) !== (v.setTo === undefined),
+    'Send exactly one of delta or setTo',
+  );
+
+/**
+ * FR-P-005b: create one product from the counter.
+ *
+ * Bulk CSV import could already create products, so a store with one new SKU
+ * had to author a spreadsheet. Same fields as an import row and the same
+ * find-or-create on category name — but prices are PAISE here, not rupees:
+ * the CSV takes rupees because a human types it, and this is an API.
+ */
+export const createProductSchema = z.object({
+  /**
+   * Optional. SKU is the CSV re-import match key — a system concern, not
+   * something a shopkeeper adding one packet of biscuits should have to invent.
+   * Left out, the server derives one from the category (AT-001, DA-002…), the
+   * same shape the seed and import files already use.
+   */
+  sku: z.string().trim().min(1).max(40).optional(),
+  name: z.string().trim().min(1).max(120),
+  category: z.string().trim().min(1).max(60),
+  unit: z.enum(UNITS),
+  packSize: z.string().trim().min(1).max(40),
+  pricePaise: z.number().int().min(100).max(10_000_000),
+  mrpPaise: z.number().int().min(100).max(10_000_000).nullable().optional(),
+  /** Opening stock. Written as the product's first ledger entry, not a bare column. */
+  stock: z.number().int().min(0).max(100_000),
+  lowStockAt: z.number().int().min(0).max(1000).optional(),
 });
 
 /**
@@ -71,6 +119,7 @@ export type RejectOrderInput = z.infer<typeof rejectOrderSchema>;
 export type PatchStoreInput = z.infer<typeof patchStoreSchema>;
 export type PatchProductInput = z.infer<typeof patchProductSchema>;
 export type StockAdjustInput = z.infer<typeof stockAdjustSchema>;
+export type CreateProductInput = z.infer<typeof createProductSchema>;
 export type ImportRequestInput = z.infer<typeof importRequestSchema>;
 export type ImportRow = z.infer<typeof importRowSchema>;
 

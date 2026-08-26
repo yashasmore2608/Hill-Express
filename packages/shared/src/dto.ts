@@ -169,6 +169,19 @@ export interface PosOrderDto {
   placedAt: string;
   finalPaise: number;
   codDuePaise: number;
+  /**
+   * How the customer pays. v1 is COD-only, but the store must be told rather
+   * than left to infer it from codDuePaise — a partly refunded COD order can
+   * carry nothing to collect and still be cash on delivery.
+   */
+  paymentMethod: string;
+  /**
+   * Cash actually taken at the door. Kept separate from codDuePaise on purpose
+   * — the schema's own comment is "short collections must be VISIBLE", and a
+   * delivered order that shows the amount DUE as though it were collected is
+   * precisely how a short collection disappears.
+   */
+  codCollectedPaise: number;
   itemCount: number;
   items: OrderItemLineDto[];
   customerName: string | null;

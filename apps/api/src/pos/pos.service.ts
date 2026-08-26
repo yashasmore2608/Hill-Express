@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import {
   decodeCursor,
@@ -6,6 +11,7 @@ import {
   type PatchProductInput,
   type PatchStoreInput,
   type PosSummaryDto,
+  type CreateProductInput,
   type ProductPageDto,
   type StockAdjustInput,
 } from '@hillexpress/shared';
@@ -14,6 +20,19 @@ import { toProductDto } from '../catalog/product.mapper';
 
 /** Prisma DECIMAL -> plain number. Quantities only; money stays integer paise. */
 const qty = (d: Prisma.Decimal | number): number => Number(d);
+
+/** Every SKU already used under a prefix, for picking the next free one. */
+const db_skusFor = async (
+  db: PrismaService['db'],
+  storeId: string,
+  prefix: string,
+): Promise<Set<string>> => {
+  const rows = await db.product.findMany({
+    where: { storeId, sku: { startsWith: `${prefix}-` } },
+    select: { sku: true },
+  });
+  return new Set(rows.map((r) => r.sku).filter((v): v is string => !!v));
+};
 
 @Injectable()
 export class PosService {
@@ -119,7 +138,12 @@ export class PosService {
     };
   }
 
-  async patchProduct(storeId: string, productId: string, input: PatchProductInput, actorId: string) {
+  async patchProduct(
+    storeId: string,
+    productId: string,
+    input: PatchProductInput,
+    actorId: string,
+  ) {
     const db = this.prisma.db;
     const product = await db.product.findFirst({
       where: { id: productId, storeId, deletedAt: null },
@@ -151,9 +175,19 @@ export class PosService {
     });
     if (!product) throw new NotFoundException('Product not found');
 
-    const next = qty(product.stockQty) + input.delta;
+    // A recount states the shelf total; a movement states the change. Only the
+    // server can turn the first into the second, because `stockQty` never
+    // leaves it — the POS sees availableQty (stock − reserved) instead.
+    const current = qty(product.stockQty);
+    const delta = input.setTo !== undefined ? input.setTo - current : input.delta!;
+
+    // A count that matches the books is a real and common outcome. It is not
+    // an error, and it must not write an empty ledger entry.
+    if (delta === 0) return toProductDto(product);
+
+    const next = current + delta;
     if (next < 0) {
-      throw new BadRequestException(`Only ${qty(product.stockQty)} in stock — cannot remove ${-input.delta}`);
+      throw new BadRequestException(`Only ${current} in stock — cannot remove ${-delta}`);
     }
     if (next < qty(product.reservedQty)) {
       throw new BadRequestException(
@@ -167,8 +201,10 @@ export class PosService {
         data: {
           productId,
           storeId,
-          delta: input.delta,
-          reason: 'MANUAL',
+          delta,
+          // A recount and a movement are different events in an audit — a
+          // stocktake that silently reads as "manual +3" hides the count.
+          reason: input.setTo !== undefined ? 'ADJUST' : 'MANUAL',
           actorType: 'STORE',
           actorId,
           note: input.note,
@@ -176,5 +212,95 @@ export class PosService {
       }),
     ]);
     return toProductDto(updated);
+  }
+
+  /**
+   * Create one product from the counter.
+   *
+   * Mirrors a single CSV import row on purpose — same find-or-create on
+   * category name, same opening-stock ledger entry — so a store that adds a
+   * SKU here and a store that re-imports a spreadsheet end up with byte-identical
+   * rows. Divergence between the two paths is how catalogues rot.
+   */
+  /**
+   * Next free SKU for a category, in the house style: two letters from the
+   * category name, then a zero-padded sequence — AT-001, DA-002, FV-006.
+   * Matches what the seed and every hand-authored CSV already use, so an
+   * auto-named product and an imported one are indistinguishable later.
+   */
+  private async nextSku(storeId: string, category: string): Promise<string> {
+    const letters = (category.match(/[a-z]/gi) ?? []).slice(0, 2).join('').toUpperCase();
+    const prefix = letters.padEnd(2, 'X');
+    const taken = await db_skusFor(this.prisma.db, storeId, prefix);
+    let n = taken.size + 1;
+    // Gaps and manual SKUs mean count+1 can already exist; walk up to the first
+    // genuinely free number rather than trusting the count.
+    while (taken.has(`${prefix}-${String(n).padStart(3, '0')}`)) n += 1;
+    return `${prefix}-${String(n).padStart(3, '0')}`;
+  }
+
+  async createProduct(storeId: string, input: CreateProductInput, actorId: string) {
+    const db = this.prisma.db;
+
+    const sku = input.sku ?? (await this.nextSku(storeId, input.category));
+
+    // (storeId, sku) is unique and is the re-import match key, so a duplicate
+    // is a conflict to report, never a silent update — the operator thinks
+    // they are adding something new.
+    const clash = await db.product.findUnique({
+      where: { storeId_sku: { storeId, sku } },
+    });
+    if (clash) {
+      throw new ConflictException(`SKU ${sku} already exists — it is "${clash.name}"`);
+    }
+
+    const existingCategory = await db.category.findFirst({
+      where: { storeId, name: { equals: input.category, mode: 'insensitive' }, deletedAt: null },
+    });
+    const categoryId =
+      existingCategory?.id ??
+      (
+        await db.category.create({
+          data: {
+            storeId,
+            name: input.category,
+            sortOrder: await db.category.count({ where: { storeId } }),
+          },
+        })
+      ).id;
+
+    const created = await db.product.create({
+      data: {
+        storeId,
+        sku,
+        name: input.name,
+        categoryId,
+        unit: input.unit,
+        packSize: input.packSize,
+        pricePaise: input.pricePaise,
+        mrpPaise: input.mrpPaise ?? null,
+        stockQty: input.stock,
+        ...(input.lowStockAt !== undefined ? { lowStockAt: input.lowStockAt } : {}),
+      },
+    });
+
+    // Opening stock is a movement like any other. Balances are SUMs of this
+    // ledger, so a product born with 40 on the shelf and no entry would never
+    // reconcile.
+    if (input.stock > 0) {
+      await db.stockLedger.create({
+        data: {
+          productId: created.id,
+          storeId,
+          delta: input.stock,
+          reason: 'MANUAL',
+          actorType: 'STORE',
+          actorId,
+          note: 'Opening stock',
+        },
+      });
+    }
+
+    return toProductDto(created);
   }
 }

@@ -5,46 +5,90 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Redirect, useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import type { ProductDto } from '@hillexpress/shared';
-import { AppText, IconButton, Price, StatusPill, useTheme } from '@hillexpress/ui';
-import { useAuth } from '../lib/auth';
-import { usePosProducts, type StockFilter } from '../lib/pos';
-import { ListSkeleton } from '../components/skeletons';
+import { AppText, Price, StatusPill, useTheme } from '@hillexpress/ui';
+import { useAuth } from '../../lib/auth';
+import { usePosProducts, usePosSummary, type StockFilter } from '../../lib/pos';
+import { ListSkeleton } from '../../components/skeletons';
+
+/**
+ * Stock can be fractional (availableQty is DECIMAL(12,3) behind the DTO), so
+ * trim the noise rather than printing "31.500".
+ */
+const stockText = (n: number): string =>
+  Number.isInteger(n) ? String(n) : String(Number(n.toFixed(3)));
 
 function Row({ product, onPress }: { product: ProductDto; onPress: () => void }) {
   const { t } = useTranslation();
   const { colors } = useTheme();
+
   const out = product.availableQty === 0;
+  const low = !out && product.lowStock;
+  const stockColor = out ? colors.critical : low ? colors.warning : colors.ink;
+
   return (
     <Pressable
       onPress={onPress}
       android_ripple={{ color: `${colors.ink}11` }}
+      accessibilityRole="button"
+      accessibilityLabel={
+        out
+          ? `${product.name}, ${t('catalog.outOfStock')}`
+          : `${product.name}, ${stockText(product.availableQty)} ${t('catalog.stockLeft')}${low ? ', low stock' : ''}`
+      }
       style={({ pressed }) => ({
         backgroundColor: colors.surface,
         borderWidth: 1,
         borderColor: colors.line,
         borderRadius: 14,
         padding: 14,
-        gap: 10,
         transform: [{ scale: pressed ? 0.99 : 1 }],
       })}
     >
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10 }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
         <View style={{ flex: 1, gap: 2 }}>
-          <AppText token="bodyM" numberOfLines={1} style={{ fontFamily: 'PlusJakartaSans-Medium' }}>
+          <AppText token="bodyM" numberOfLines={2} style={{ fontFamily: 'PlusJakartaSans-Medium' }}>
             {product.name}
           </AppText>
           <AppText token="caption" color="ink3">
             {product.sku ?? '—'} · {product.packSize}
           </AppText>
+          {/* Hidden is a property of the PRODUCT, not of its stock, so it stays
+              on the left with the identity rather than in the number column.
+
+              The DTO's `isAvailable` is `p.isAvailable && availableQty > 0`, so
+              it goes false the moment stock hits zero — badging that as HIDDEN
+              blames the operator for something they did not do, and repeats
+              what OUT OF STOCK already says. Only claim it was hidden when
+              stock cannot be the explanation. */}
+          {!product.isAvailable && !out ? (
+            <View style={{ marginTop: 4 }}>
+              <StatusPill label={t('catalog.hidden')} tone="crit" />
+            </View>
+          ) : null}
         </View>
-        <Price amountPaise={product.pricePaise} mrpPaise={product.mrpPaise} />
-      </View>
-      <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-        <StatusPill
-          label={`${t('catalog.stock')} ${product.availableQty}`}
-          tone={out ? 'crit' : product.lowStock ? 'warn' : 'ok'}
-        />
-        {!product.isAvailable ? <StatusPill label={t('catalog.hidden')} tone="crit" /> : null}
+
+        {/* Price above, stock below, right-aligned.
+            Two lines, not four. The first version labelled every row "IN STOCK"
+            — a whole line per product to say nothing is wrong, on the ~90% of
+            rows where nothing is wrong. Silence is the normal state; only an
+            exception earns a word. The number also came down from 24px, where
+            it out-shouted the price and left the row with no clear lead. */}
+        <View style={{ alignItems: 'flex-end', gap: 8 }}>
+          <Price amountPaise={product.pricePaise} mrpPaise={product.mrpPaise} />
+
+          {out ? (
+            // Zero needs no digit — the words already carry it, and they carry
+            // it to someone who cannot tell the red from the amber.
+            <StatusPill label={t('catalog.outOfStock')} tone="crit" />
+          ) : (
+            <AppText token="priceM" style={{ fontSize: 18, lineHeight: 22, color: stockColor }}>
+              {stockText(product.availableQty)}
+              <AppText token="caption" style={{ color: low ? stockColor : colors.ink3 }}>
+                {`  ${t('catalog.stockLeft')}`}
+              </AppText>
+            </AppText>
+          )}
+        </View>
       </View>
     </Pressable>
   );
@@ -66,6 +110,7 @@ export default function Catalogue() {
   }, [search]);
 
   const query = usePosProducts({ search: debounced || undefined, filter });
+  const summary = usePosSummary();
   const items = useMemo(() => (query.data?.pages ?? []).flatMap((p) => p.items), [query.data]);
 
   if (status === 'signedOut') return <Redirect href="/(auth)/sign-in" />;
@@ -78,15 +123,46 @@ export default function Catalogue() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.ground }}>
-      <View style={{ paddingTop: insets.top + 12, paddingHorizontal: 20, gap: 14, paddingBottom: 12 }}>
+      <View
+        style={{ paddingTop: insets.top + 12, paddingHorizontal: 20, gap: 14, paddingBottom: 12 }}
+      >
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-          <IconButton icon="←" label={t('common.back')} onPress={() => router.back()} />
           <View style={{ flex: 1, gap: 2 }}>
             <AppText token="titleL">{t('catalog.title')}</AppText>
             <AppText token="caption" color="ink3">
-              {items.length} products
+              {/* items.length is only what has been PAGED IN, so unfiltered it
+                  under-reports the catalogue — it read "20 products" against a
+                  real 26. The summary carries the true total; the loaded count
+                  is only meaningful once a search or filter narrows things. */}
+              {debounced || filter !== 'all'
+                ? `${items.length} shown`
+                : `${summary.data?.productCount ?? items.length} products`}
             </AppText>
           </View>
+          {/* The catalogue had no way in: creating a product meant authoring a
+              CSV and using bulk import for a single new SKU. */}
+          <Pressable
+            onPress={() => router.push('/product/new')}
+            accessibilityRole="button"
+            accessibilityLabel="Add product"
+            style={({ pressed }) => ({
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 8,
+              paddingHorizontal: 16,
+              paddingVertical: 11,
+              borderRadius: 999,
+              backgroundColor: colors.ink,
+              transform: [{ scale: pressed ? 0.96 : 1 }],
+            })}
+          >
+            <AppText token="titleM" style={{ color: colors.surface, lineHeight: 20 }}>
+              +
+            </AppText>
+            <AppText token="labelM" style={{ color: colors.surface }}>
+              Add product
+            </AppText>
+          </Pressable>
         </View>
 
         <View

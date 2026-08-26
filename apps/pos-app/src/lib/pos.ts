@@ -1,5 +1,6 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
+  CreateProductInput,
   ImportResultDto,
   PatchProductInput,
   PatchStoreInput,
@@ -82,19 +83,59 @@ export function usePatchProduct() {
   });
 }
 
+/**
+ * Stock movement. Exactly one of `delta` (a change) or `setTo` (a shelf
+ * recount) — the server rejects both or neither, and resolves `setTo` itself
+ * because only it can see raw stockQty behind the reserved-quantity subtraction.
+ */
+export type StockMove =
+  | { id: string; delta: number; setTo?: never; note?: string }
+  | { id: string; setTo: number; delta?: never; note?: string };
+
 export function useAdjustStock() {
   const { accessToken } = useAuth();
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, delta, note }: { id: string; delta: number; note?: string }) =>
+    mutationFn: ({ id, delta, setTo, note }: StockMove) =>
       apiFetch<ProductDto>(`/pos/products/${id}/stock`, {
         method: 'POST',
         token: accessToken,
-        body: { delta, note },
+        body: delta !== undefined ? { delta, note } : { setTo, note },
       }),
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: ['pos', 'products'] });
       void qc.invalidateQueries({ queryKey: ['pos', 'summary'] });
+    },
+  });
+}
+
+/**
+ * The store's existing categories, so adding a product is a tap rather than
+ * typed text. Category is find-or-create BY NAME on the server, so a typo
+ * silently spawns a duplicate category — picking one removes that whole class
+ * of mistake. The catalog endpoint is public and store-scoped by id.
+ */
+export function usePosCategories() {
+  const { user, status } = useAuth();
+  const storeId = user?.storeId;
+  return useQuery({
+    queryKey: ['pos', 'categories', storeId],
+    queryFn: () =>
+      apiFetch<{ id: string; name: string; productCount?: number }[]>(
+        `/stores/${storeId}/categories`,
+      ),
+    enabled: status === 'signedIn' && !!storeId,
+  });
+}
+
+export function useCreateProduct() {
+  const { accessToken } = useAuth();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateProductInput) =>
+      apiFetch<ProductDto>('/pos/products', { method: 'POST', token: accessToken, body }),
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: ['pos'] });
     },
   });
 }

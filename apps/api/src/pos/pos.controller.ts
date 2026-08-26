@@ -1,11 +1,13 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
+  createProductSchema,
   importRequestSchema,
   patchProductSchema,
   patchStoreSchema,
   productsQuerySchema,
   stockAdjustSchema,
+  type CreateProductInput,
   type ImportRequestInput,
   type PatchProductInput,
   type PatchStoreInput,
@@ -44,6 +46,15 @@ export class PosController {
     @Body(new ZodPipe(patchStoreSchema)) dto: PatchStoreInput,
   ) {
     return this.pos.patchStore(user.storeId!, dto, user.sub);
+  }
+
+  @Post('products')
+  @ApiOperation({ summary: 'Create one product — same shape as a CSV import row' })
+  createProduct(
+    @CurrentUser() user: JwtPayload,
+    @Body(new ZodPipe(createProductSchema)) dto: CreateProductInput,
+  ) {
+    return this.pos.createProduct(user.storeId!, dto, user.sub);
   }
 
   @Get('products')

@@ -314,9 +314,12 @@ export class OrdersService {
     await db.$transaction(async (tx) => {
       const order = await tx.order.findUnique({ where: { id: orderId }, include: { items: true } });
       if (!order) throw new NotFoundException('Order not found');
-      if (opts.storeId && order.storeId !== opts.storeId) throw new ForbiddenException('Not your store');
-      if (opts.userId && order.userId !== opts.userId) throw new ForbiddenException('Not your order');
-      if (opts.driverId && order.driverId !== opts.driverId) throw new ForbiddenException('Not your delivery');
+      if (opts.storeId && order.storeId !== opts.storeId)
+        throw new ForbiddenException('Not your store');
+      if (opts.userId && order.userId !== opts.userId)
+        throw new ForbiddenException('Not your order');
+      if (opts.driverId && order.driverId !== opts.driverId)
+        throw new ForbiddenException('Not your delivery');
 
       const from = order.fulfillmentStatus as FulfillmentStatus;
       if (!canTransitionFulfillment(from, to, actor)) {
@@ -328,7 +331,14 @@ export class OrdersService {
         data: { fulfillmentStatus: to, ...(opts.data ?? {}) },
       });
       await tx.orderStatusHistory.create({
-        data: { orderId, fromStatus: from, toStatus: to, actorType: actor, actorId, note: opts.note },
+        data: {
+          orderId,
+          fromStatus: from,
+          toStatus: to,
+          actorType: actor,
+          actorId,
+          note: opts.note,
+        },
       });
 
       if (opts.releaseStock) {
@@ -339,9 +349,7 @@ export class OrdersService {
           UPDATE "Product" AS p
              SET "reservedQty" = p."reservedQty" - v.qty
             FROM (VALUES ${Prisma.join(
-              order.items.map(
-                (i) => Prisma.sql`(${i.productId}::text, ${qty(i.qty)}::decimal)`,
-              ),
+              order.items.map((i) => Prisma.sql`(${i.productId}::text, ${qty(i.qty)}::decimal)`),
             )}) AS v(id, qty)
            WHERE p."id" = v.id`;
         await tx.stockLedger.createMany({
@@ -364,9 +372,7 @@ export class OrdersService {
              SET "stockQty"    = p."stockQty"    - v.qty,
                  "reservedQty" = p."reservedQty" - v.qty
             FROM (VALUES ${Prisma.join(
-              order.items.map(
-                (i) => Prisma.sql`(${i.productId}::text, ${qty(i.qty)}::decimal)`,
-              ),
+              order.items.map((i) => Prisma.sql`(${i.productId}::text, ${qty(i.qty)}::decimal)`),
             )}) AS v(id, qty)
            WHERE p."id" = v.id`;
         await tx.stockLedger.createMany({
@@ -396,7 +402,9 @@ export class OrdersService {
   cancelByCustomer(userId: string, orderId: string, reason: string) {
     return this.getForCustomer(userId, orderId).then(async (order) => {
       if (!customerCanCancel(order.fulfillmentStatus as FulfillmentStatus)) {
-        throw new BadRequestException('The store has already started on this order — call support to cancel');
+        throw new BadRequestException(
+          'The store has already started on this order — call support to cancel',
+        );
       }
       await this.applyTransition(orderId, 'CANCELLED', 'CUSTOMER', userId, {
         userId,
@@ -562,6 +570,8 @@ export class OrdersService {
       placedAt: o.placedAt.toISOString(),
       finalPaise: o.finalPaise,
       codDuePaise: o.codDuePaise,
+      paymentMethod: o.paymentMethod,
+      codCollectedPaise: o.codCollectedPaise,
       itemCount: o.items.reduce((n, i) => n + qty(i.qty), 0),
       items: o.items.map((i) => ({
         productId: i.productId,
@@ -606,7 +616,9 @@ export class OrdersService {
       db.order.aggregate({
         where: {
           driverId,
-          fulfillmentStatus: { in: ['READY_FOR_PICKUP', 'PICKED_UP', 'OUT_FOR_DELIVERY', 'ACCEPTED', 'PACKING'] },
+          fulfillmentStatus: {
+            in: ['READY_FOR_PICKUP', 'PICKED_UP', 'OUT_FOR_DELIVERY', 'ACCEPTED', 'PACKING'],
+          },
         },
         _sum: { codDuePaise: true },
       }),
@@ -620,7 +632,8 @@ export class OrdersService {
     if (!order) throw new NotFoundException('Order not found');
 
     const from = order.assignmentStatus as AssignmentStatus;
-    const via: AssignmentStatus = from === 'UNASSIGNED' || from === 'REASSIGNED' ? 'ASSIGNED' : from;
+    const via: AssignmentStatus =
+      from === 'UNASSIGNED' || from === 'REASSIGNED' ? 'ASSIGNED' : from;
     if (!canTransitionAssignment(from, via, 'ADMIN') && from !== 'REASSIGNED') {
       throw new BadRequestException(`Order is already ${from.toLowerCase().replace(/_/g, ' ')}`);
     }
@@ -708,7 +721,9 @@ export class OrdersService {
     const rows = await this.prisma.db.order.findMany({
       where: {
         driverId,
-        fulfillmentStatus: { in: ['ACCEPTED', 'PACKING', 'READY_FOR_PICKUP', 'PICKED_UP', 'OUT_FOR_DELIVERY'] },
+        fulfillmentStatus: {
+          in: ['ACCEPTED', 'PACKING', 'READY_FOR_PICKUP', 'PICKED_UP', 'OUT_FOR_DELIVERY'],
+        },
       },
       include: {
         items: true,
@@ -725,7 +740,13 @@ export class OrdersService {
     const db = this.prisma.db;
     const order = await db.order.findFirst({ where: { id: orderId, driverId } });
     if (!order) throw new NotFoundException('Order not found');
-    if (!canTransitionAssignment(order.assignmentStatus as AssignmentStatus, 'ACCEPTED_BY_DRIVER', 'DRIVER')) {
+    if (
+      !canTransitionAssignment(
+        order.assignmentStatus as AssignmentStatus,
+        'ACCEPTED_BY_DRIVER',
+        'DRIVER',
+      )
+    ) {
       throw new BadRequestException('This delivery is not waiting on your acceptance');
     }
     await db.$transaction([
@@ -807,7 +828,9 @@ export class OrdersService {
           where: {
             driverId,
             id: { not: orderId },
-            fulfillmentStatus: { in: ['ACCEPTED', 'PACKING', 'READY_FOR_PICKUP', 'PICKED_UP', 'OUT_FOR_DELIVERY'] },
+            fulfillmentStatus: {
+              in: ['ACCEPTED', 'PACKING', 'READY_FOR_PICKUP', 'PICKED_UP', 'OUT_FOR_DELIVERY'],
+            },
           },
         });
         if (remaining === 0) {

@@ -6,7 +6,8 @@ import * as Haptics from 'expo-haptics';
 import type { ProductDto } from '@hillexpress/shared';
 import { AppText, Button, Card, Screen, StatusPill, useTheme } from '@hillexpress/ui';
 import { useAuth } from '../../lib/auth';
-import { useAdjustStock, usePatchProduct, usePosProducts } from '../../lib/pos';
+import { usePatchProduct, usePosProducts } from '../../lib/pos';
+import { StockAdjust } from '../../components/stock-adjust';
 import { ListSkeleton } from '../../components/skeletons';
 
 export default function EditProduct() {
@@ -23,7 +24,6 @@ export default function EditProduct() {
     .find((p) => p.id === id);
 
   const patch = usePatchProduct();
-  const adjust = useAdjustStock();
 
   const [price, setPrice] = useState('');
   const [mrp, setMrp] = useState('');
@@ -140,7 +140,13 @@ export default function EditProduct() {
           {/* Stock — ledgered, never a raw write */}
           <Card style={{ gap: 14 }}>
             <View style={{ gap: 3 }}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <View
+                style={{
+                  flexDirection: 'row',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                }}
+              >
                 <AppText token="titleM">{t('product.stockTitle')}</AppText>
                 <StatusPill
                   label={t('product.current', { n: product.availableQty })}
@@ -151,36 +157,7 @@ export default function EditProduct() {
                 {t('product.stockHint')}
               </AppText>
             </View>
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              {[-10, -1, +1, +10].map((d) => (
-                <Pressable
-                  key={d}
-                  disabled={adjust.isPending}
-                  onPress={() => {
-                    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    adjust.mutate({ id: product.id, delta: d });
-                  }}
-                  style={({ pressed }) => ({
-                    flex: 1,
-                    height: 48,
-                    borderRadius: 12,
-                    backgroundColor: d > 0 ? colors.mossSoft : colors.criticalSoft,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    transform: [{ scale: pressed ? 0.95 : 1 }],
-                  })}
-                >
-                  <AppText token="labelM" style={{ color: d > 0 ? colors.ok : colors.critical }}>
-                    {d > 0 ? `+${d}` : d}
-                  </AppText>
-                </Pressable>
-              ))}
-            </View>
-            {adjust.isError ? (
-              <AppText token="caption" color="critical">
-                {adjust.error instanceof Error ? adjust.error.message : t('common.retry')}
-              </AppText>
-            ) : null}
+            <StockAdjust product={product} />
           </Card>
         </>
       )}
