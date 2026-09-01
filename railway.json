@@ -1,0 +1,14 @@
+{
+  "$schema": "https://railway.app/railway.schema.json",
+  "build": {
+    "builder": "NIXPACKS",
+    "buildCommand": "corepack enable && pnpm install --frozen-lockfile --filter @hillexpress/api... --config.virtual-store-dir=node_modules/.pnpm && pnpm --filter @hillexpress/shared build && pnpm --filter @hillexpress/api exec prisma generate && pnpm --filter @hillexpress/api exec prisma migrate deploy && pnpm --filter @hillexpress/api build"
+  },
+  "deploy": {
+    "startCommand": "pnpm --filter @hillexpress/api start",
+    "healthcheckPath": "/v1/health",
+    "healthcheckTimeout": 120,
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 3
+  }
+}
