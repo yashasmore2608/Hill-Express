@@ -1,1 +1,3 @@
-uploads/
+# Runtime upload root only (UPLOAD_DIR) — anchored with a leading slash so it
+# cannot also swallow src/uploads/, the module that writes to it.
+/uploads/
