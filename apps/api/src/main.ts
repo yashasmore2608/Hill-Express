@@ -60,6 +60,16 @@ async function bootstrap() {
     .build();
   SwaggerModule.setup('docs', app, SwaggerModule.createDocument(app, swagger));
 
+  // DEMO_MODE hands the login OTP back in the API response, which lets anyone
+  // who can reach this service sign in as any phone number. It exists so a
+  // deployed demo is usable before an SMS provider is wired up. Shout about it
+  // on every boot so it cannot quietly survive into launch.
+  if (env.DEMO_MODE) {
+    app.get(Logger).warn(
+      'DEMO_MODE is ON — login OTPs are returned in API responses and anyone can sign in as anyone. Unset DEMO_MODE before real customers exist.',
+    );
+  }
+
   await app.listen(env.PORT);
 }
 

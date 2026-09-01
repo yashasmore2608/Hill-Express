@@ -49,3 +49,10 @@ services:
       # SERVICE_ALL_PINCODES is deliberately ABSENT. It makes every pincode
       # serviceable, which in production would let anyone in the country order.
       # Do not add it here.
+
+      # Demo deployment only: returns the login OTP in the API response so the
+      # apps can be signed into before an SMS provider exists. This is an
+      # AUTHENTICATION BYPASS — anyone reaching the API can sign in as anyone.
+      # Set it in the Render dashboard while demoing; DELETE it before launch.
+      # - key: DEMO_MODE
+      #   value: "true"

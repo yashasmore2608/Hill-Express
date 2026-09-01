@@ -79,9 +79,11 @@ export class AuthService {
     return {
       ok: true as const,
       expiresInSec: LIMITS.otpExpiryMinutes * 60,
-      // Surfaced ONLY in development so the flow is testable before an SMS
-      // provider exists. Never present in production responses.
-      ...(env.NODE_ENV === 'development' ? { devOtp: otp } : {}),
+      // Surfaced in development so the flow is testable before an SMS provider
+      // exists, and in a DEMO_MODE deployment for the same reason — see the
+      // warning on that flag in config/env.ts. Never present in a production
+      // response otherwise.
+      ...(env.NODE_ENV === 'development' || env.DEMO_MODE ? { devOtp: otp } : {}),
     };
   }
 

@@ -32,6 +32,22 @@ const envSchema = z.object({
     .optional()
     .transform((v) => v === 'true'),
   /**
+   * DEMO ONLY. Return the login OTP in the API response even in production,
+   * so a deployed build can be signed into before an SMS provider exists.
+   *
+   * This is an AUTHENTICATION BYPASS: anyone who can reach the API can request
+   * a code for any phone number and read it straight back, which means they can
+   * sign in as anyone. Acceptable only while the URL is private and the data is
+   * seed data. MUST be unset before real customers exist.
+   */
+  DEMO_MODE: z
+    .enum(['true', 'false'])
+    .optional()
+    // An empty value is how .env.example ships it and how a blank Render field
+    // arrives — both mean "off", not "crash at boot".
+    .or(z.literal(''))
+    .transform((v) => v === 'true'),
+  /**
    * Where uploaded images live. Relative paths resolve from the API package
    * root, so the default works in dev with no configuration. In Docker this
    * points at a mounted volume — uploads must survive a container rebuild.
