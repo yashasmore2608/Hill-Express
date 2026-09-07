@@ -1,0 +1,14 @@
+# Keep the build context to source only. Every workspace package.json must
+# survive: --frozen-lockfile validates the lockfile against the whole workspace,
+# so a missing manifest fails the install even for packages we never build.
+node_modules
+**/node_modules
+**/dist
+**/.expo
+**/android
+**/ios
+**/assets
+.git
+*.log
+apps/api/uploads
+HillExpress_SRS_v1.0.pdf
