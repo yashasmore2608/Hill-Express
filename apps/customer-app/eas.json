@@ -13,13 +13,13 @@
       "distribution": "internal",
       "android": { "buildType": "apk" },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://hill-express-api.onrender.com"
+        "EXPO_PUBLIC_API_URL": "https://hill-express-api-production.up.railway.app"
       }
     },
     "production": {
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://hill-express-api.onrender.com"
+        "EXPO_PUBLIC_API_URL": "https://hill-express-api-production.up.railway.app"
       }
     }
   },

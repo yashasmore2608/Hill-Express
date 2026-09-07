@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
-  "installCommand": "cd ../.. && pnpm install --frozen-lockfile --filter customer-app... --config.virtual-store-dir=node_modules/.pnpm",
+  "installCommand": "cd ../.. && pnpm install --frozen-lockfile --filter driver-app... --config.virtual-store-dir=node_modules/.pnpm",
   "buildCommand": "npx expo export --platform web",
   "outputDirectory": "dist",
   "build": {
@@ -19,18 +19,6 @@
       "destination": "/account.html"
     },
     {
-      "source": "/address/new",
-      "destination": "/address/new.html"
-    },
-    {
-      "source": "/cart",
-      "destination": "/cart.html"
-    },
-    {
-      "source": "/orders",
-      "destination": "/orders/index.html"
-    },
-    {
       "source": "/otp",
       "destination": "/otp.html"
     },
@@ -39,20 +27,8 @@
       "destination": "/sign-in.html"
     },
     {
-      "source": "/address/:id",
-      "destination": "/address/%5Bid%5D.html"
-    },
-    {
-      "source": "/category/:id",
-      "destination": "/category/%5Bid%5D.html"
-    },
-    {
-      "source": "/orders/:id",
-      "destination": "/orders/%5Bid%5D.html"
-    },
-    {
-      "source": "/product/:id",
-      "destination": "/product/%5Bid%5D.html"
+      "source": "/order/:id",
+      "destination": "/order/%5Bid%5D.html"
     },
     {
       "source": "/(.*)",

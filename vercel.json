@@ -7,11 +7,11 @@
   "rewrites": [
     {
       "source": "/v1/:path*",
-      "destination": "https://hill-express-api.onrender.com/v1/:path*"
+      "destination": "https://hill-express-api-production.up.railway.app/v1/:path*"
     },
     {
       "source": "/uploads/:path*",
-      "destination": "https://hill-express-api.onrender.com/uploads/:path*"
+      "destination": "https://hill-express-api-production.up.railway.app/uploads/:path*"
     },
     {
       "source": "/(.*)",
