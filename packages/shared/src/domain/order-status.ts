@@ -93,6 +93,18 @@ export const canTransitionAssignment = (
 export const isTerminal = (s: FulfillmentStatus): boolean =>
   s === 'DELIVERED' || s === 'REJECTED' || s === 'CANCELLED';
 
+/**
+ * Live orders — everything not terminal, PLACED included.
+ *
+ * DERIVED rather than listed, because hand-written copies drift: the admin
+ * driver-load count once omitted PLACED, so a driver assigned to an order the
+ * store had not yet accepted showed "0 active". Assignment and fulfillment are
+ * independent axes, so that gap is the normal case, not an edge case. Add a
+ * status to the enum and it classifies itself here.
+ */
+export const ACTIVE_FULFILLMENT_STATUSES: readonly FulfillmentStatus[] =
+  FULFILLMENT_STATUSES.filter((s) => !isTerminal(s));
+
 /** States in which a customer may still cancel without admin help. */
 export const customerCanCancel = (s: FulfillmentStatus): boolean => s === 'PLACED';
 

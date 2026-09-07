@@ -8,6 +8,7 @@ import {
 import { Prisma } from '@prisma/client';
 import type { Order, OrderAddress, OrderItem, OrderStatusHistory } from '@prisma/client';
 import {
+  ACTIVE_FULFILLMENT_STATUSES,
   canTransitionAssignment,
   canTransitionFulfillment,
   computeBill,
@@ -32,17 +33,9 @@ import { PrismaService, TX } from '../prisma/prisma.service';
 import { AddressesService } from '../addresses/addresses.service';
 import { InvoicesService } from '../invoices/invoices.service';
 import { otpFor } from '../config/secrets';
+import { env } from '../config/env';
 
 type OrderWithItems = Order & { items: OrderItem[] };
-
-const ACTIVE_STATUSES: FulfillmentStatus[] = [
-  'PLACED',
-  'ACCEPTED',
-  'PACKING',
-  'READY_FOR_PICKUP',
-  'PICKED_UP',
-  'OUT_FOR_DELIVERY',
-];
 
 /** Prisma DECIMAL -> plain number for JSON. Quantities only; money is int. */
 const qty = (d: Prisma.Decimal | number): number => Number(d);
@@ -96,17 +89,25 @@ export class OrdersService {
     }
 
     // ── COD risk controls: with no prepayment these are load-bearing ──
-    const openCod = await db.order.count({
-      where: {
-        userId,
-        paymentMethod: 'COD',
-        fulfillmentStatus: { in: ACTIVE_STATUSES },
-      },
-    });
-    if (openCod >= user.maxOpenCodOrders) {
-      throw new BadRequestException(
-        'You already have an order on the way — you can order again once it is delivered',
-      );
+    //
+    // DEMO_MODE lifts them. A demo account places order after order from one
+    // phone number, and the first-timer caps (one open order, ₹500) stop that
+    // dead — which looks like a broken checkout rather than the fraud control
+    // it is. Off by default, and lifted only alongside the OTP bypass that
+    // already makes a DEMO_MODE deployment untrusted.
+    if (!env.DEMO_MODE) {
+      const openCod = await db.order.count({
+        where: {
+          userId,
+          paymentMethod: 'COD',
+          fulfillmentStatus: { in: [...ACTIVE_FULFILLMENT_STATUSES] },
+        },
+      });
+      if (openCod >= user.maxOpenCodOrders) {
+        throw new BadRequestException(
+          'You already have an order on the way — you can order again once it is delivered',
+        );
+      }
     }
 
     // ── Load products & compute the authoritative bill ──
@@ -129,7 +130,7 @@ export class OrdersService {
       input.items.map((i) => ({ pricePaise: byId.get(i.productId)!.pricePaise, qty: i.qty })),
       store,
     );
-    if (bill.totalPaise > user.maxCodOrderPaise) {
+    if (!env.DEMO_MODE && bill.totalPaise > user.maxCodOrderPaise) {
       throw new BadRequestException(
         `Cash-on-delivery orders are limited to ₹${Math.floor(user.maxCodOrderPaise / 100)} for now — the limit rises after a few successful deliveries`,
       );
@@ -506,7 +507,7 @@ export class OrdersService {
         .map((h) => ({ toStatus: h.toStatus, at: h.createdAt.toISOString(), note: h.note })),
       cancellable: customerCanCancel(o.fulfillmentStatus as FulfillmentStatus),
       // "Share OTP 4417 with Ravi" — the customer's proof of delivery.
-      deliveryOtp: ACTIVE_STATUSES.includes(o.fulfillmentStatus as FulfillmentStatus)
+      deliveryOtp: ACTIVE_FULFILLMENT_STATUSES.includes(o.fulfillmentStatus as FulfillmentStatus)
         ? otpFor(o.id, 'DELIVERY')
         : null,
     };
@@ -721,9 +722,9 @@ export class OrdersService {
     const rows = await this.prisma.db.order.findMany({
       where: {
         driverId,
-        fulfillmentStatus: {
-          in: ['ACCEPTED', 'PACKING', 'READY_FOR_PICKUP', 'PICKED_UP', 'OUT_FOR_DELIVERY'],
-        },
+        // PLACED included: dispatch may assign a driver before the store has
+        // accepted, and that delivery is the driver's from the moment it lands.
+        fulfillmentStatus: { in: [...ACTIVE_FULFILLMENT_STATUSES] },
       },
       include: {
         items: true,

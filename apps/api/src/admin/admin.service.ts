@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
+import { ACTIVE_FULFILLMENT_STATUSES } from '@hillexpress/shared';
 import type { AdminDispatchOrderDto, AdminDriverDto } from '@hillexpress/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { OrdersService } from '../orders/orders.service';
@@ -154,9 +155,9 @@ export class AdminService {
           db.order.count({
             where: {
               driverId: d.id,
-              fulfillmentStatus: {
-                in: ['ACCEPTED', 'PACKING', 'READY_FOR_PICKUP', 'PICKED_UP', 'OUT_FOR_DELIVERY'],
-              },
+              // Canonical list, PLACED included — a driver assigned to an
+              // order the store has not accepted yet is still carrying it.
+              fulfillmentStatus: { in: [...ACTIVE_FULFILLMENT_STATUSES] },
             },
           }),
         ]);
